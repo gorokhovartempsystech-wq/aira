@@ -76,3 +76,12 @@ python -m aira_ml.pack --pair models/pair1-rubert-base --nli models/nli2-rubert-
 Журнал экспериментов — `docs/experiment.md`. Данные: `data/spaces/` — синтетические пространства
 (происхождение — `data/spaces/gen/PROVENANCE.md`), `data/train/` — пары после проверки учителем.
 Реальные документы компаний сюда не кладём (см. `../docs/decisions/0004-real-data-local-only.md`).
+
+**Песочница** — страница в браузере поверх движка, пока нет приложения:
+
+```bash
+python -m aira_ml.playground --models ../models/models-0.1   # открыть http://127.0.0.1:8770
+```
+
+Вставить требования → «Ревью»; «Разобрать на пункты» → выбрать пункт → поправить →
+«Проверить влияние правки». Только для демо: слушает 127.0.0.1, без токена.
