@@ -1,0 +1,62 @@
+{
+ "engine": "0.1.0",
+ "models": "0.1",
+ "source": "F001",
+ "old": "Возврат товара надлежащего качества возможен в течение 14 дней с даты получения.",
+ "new": "Возврат товара надлежащего качества возможен в течение 30 дней с даты получения.",
+ "search_terms": [
+  "14"
+ ],
+ "issues": [
+  {
+   "id": "iss-ac9252dbde",
+   "type": "affected",
+   "severity": "warning",
+   "confidence": 0.962,
+   "light": "red",
+   "fragment_id": "F003",
+   "span": {
+    "start": 0,
+    "end": 100,
+    "quote": "POST /returns — ответ 422 с кодом RETURN_PERIOD_EXPIRED, если с даты получения прошло более 14 дней."
+   },
+   "related": {
+    "fragment_id": "F001",
+    "quote": "Возврат товара надлежащего качества возможен в течение 14 дней с даты получения.",
+    "status": "active"
+   },
+   "explanation": "Повторяет или выводит старое значение — нужно обновить.",
+   "rule": null,
+   "suggestion": null,
+   "question": null
+  },
+  {
+   "id": "iss-78e4d77216",
+   "type": "affected",
+   "severity": "warning",
+   "confidence": 0.953,
+   "light": "red",
+   "fragment_id": "F004",
+   "span": {
+    "start": 0,
+    "end": 91,
+    "quote": "Письмо о доставке заказа: «Если товар не подошёл, вы можете вернуть его в течение 14 дней»."
+   },
+   "related": {
+    "fragment_id": "F001",
+    "quote": "Возврат товара надлежащего качества возможен в течение 14 дней с даты получения.",
+    "status": "active"
+   },
+   "explanation": "Повторяет или выводит старое значение — нужно обновить.",
+   "rule": null,
+   "suggestion": null,
+   "question": null
+  }
+ ],
+ "checked": {
+  "fragments": 6,
+  "candidates": 4,
+  "skipped_status": 1
+ },
+ "seconds": 0.08
+}

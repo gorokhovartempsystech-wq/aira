@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aira.local/contracts/engine.schema.json",
+  "title": "AIRA engine API v1",
+  "$defs": {
+    "fragment": {
+      "type": "object",
+      "required": ["id", "text", "status"],
+      "properties": {
+        "id": {"type": "string"},
+        "text": {"type": "string"},
+        "document": {"type": "string"},
+        "status": {"enum": ["active", "exception", "deprecated", "delta", "discussion"]},
+        "type": {"type": "string"},
+        "offset": {"type": "integer", "minimum": 0}
+      }
+    },
+    "issue": {
+      "type": "object",
+      "required": ["id", "type", "severity", "light", "confidence", "fragment_id", "span", "related",
+                   "explanation", "rule", "suggestion", "question"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^iss-[0-9a-f]{10}$"},
+        "type": {"enum": ["formulation", "duplicate", "contradiction", "affected"]},
+        "severity": {"enum": ["info", "warning", "critical"]},
+        "light": {"enum": ["red", "yellow"]},
+        "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+        "fragment_id": {"type": "string"},
+        "span": {
+          "type": "object", "required": ["start", "end", "quote"],
+          "properties": {"start": {"type": "integer"}, "end": {"type": "integer"}, "quote": {"type": "string"}}
+        },
+        "related": {
+          "oneOf": [
+            {"type": "null"},
+            {"type": "object", "required": ["fragment_id", "quote", "status"],
+             "properties": {"fragment_id": {"type": "string"}, "quote": {"type": "string"}, "status": {"type": "string"}}}
+          ]
+        },
+        "explanation": {"type": "string"},
+        "rule": {"type": ["string", "null"]},
+        "suggestion": {
+          "oneOf": [
+            {"type": "null"},
+            {"type": "object", "required": ["before", "after"],
+             "properties": {"before": {"type": "string"}, "after": {"type": "string"}}}
+          ]
+        },
+        "question": {"type": ["string", "null"]}
+      }
+    },
+    "request": {
+      "type": "object",
+      "properties": {
+        "text": {"type": "string"},
+        "fragments": {"type": "array", "items": {"$ref": "#/$defs/fragment"}},
+        "disabled_types": {"type": "array", "items": {"enum": ["formulation", "duplicate", "contradiction", "affected"]}},
+        "dismissed": {"type": "array", "items": {"type": "string"}},
+        "fragment_id": {"type": "string"},
+        "old": {"type": "string"},
+        "new": {"type": "string"}
+      },
+      "anyOf": [{"required": ["text"]}, {"required": ["fragments"]}]
+    },
+    "review_response": {
+      "type": "object",
+      "required": ["engine", "models", "issues", "questions", "checked", "seconds"],
+      "properties": {
+        "engine": {"type": "string"}, "models": {"type": "string"},
+        "issues": {"type": "array", "items": {"$ref": "#/$defs/issue"}},
+        "questions": {"type": "array", "items": {"type": "string"}},
+        "checked": {"type": "object"}, "seconds": {"type": "number"}
+      }
+    },
+    "impact_response": {
+      "type": "object",
+      "required": ["engine", "models", "source", "old", "new", "search_terms", "issues", "checked", "seconds"],
+      "properties": {
+        "engine": {"type": "string"}, "models": {"type": "string"},
+        "source": {"type": "string"}, "old": {"type": "string"}, "new": {"type": "string"},
+        "search_terms": {"type": "array", "items": {"type": "string"}},
+        "issues": {"type": "array", "items": {"$ref": "#/$defs/issue"}},
+        "checked": {"type": "object"}, "seconds": {"type": "number"}
+      }
+    },
+    "parse_response": {
+      "type": "object", "required": ["fragments"],
+      "properties": {"fragments": {"type": "array", "items": {"$ref": "#/$defs/fragment"}}}
+    }
+  }
+}

@@ -1,0 +1,23 @@
+name: Задача
+description: Работа, которую нужно сделать
+labels: []
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: Что нужно сделать
+      description: Результат, который можно проверить
+    validations:
+      required: true
+  - type: textarea
+    id: done
+    attributes:
+      label: Когда готово
+      description: Критерии приёмки — по ним ревьюер поймёт, что задача закрыта
+      placeholder: "- …\n- …"
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Контекст и ссылки

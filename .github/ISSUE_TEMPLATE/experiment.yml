@@ -1,0 +1,23 @@
+name: Эксперимент (ML)
+description: Гипотеза для модели или данных — с порогом до прогона
+labels: [engine]
+body:
+  - type: textarea
+    id: hypothesis
+    attributes:
+      label: Гипотеза
+      description: "Если …, то … (метрика, порог). Порог фиксируем до прогона."
+    validations:
+      required: true
+  - type: textarea
+    id: data
+    attributes:
+      label: Данные и разбиение
+      description: На чём учим, на чём проверяем; почему нет утечки
+    validations:
+      required: true
+  - type: textarea
+    id: result
+    attributes:
+      label: Результат
+      description: Заполняется после прогона — таблица и вывод; запись в engine/docs/experiment.md

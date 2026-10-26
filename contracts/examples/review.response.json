@@ -1,0 +1,58 @@
+{
+ "engine": "0.1.0",
+ "models": "0.1",
+ "issues": [
+  {
+   "id": "iss-7bae57ba14",
+   "type": "formulation",
+   "severity": "warning",
+   "confidence": 1.0,
+   "light": "red",
+   "fragment_id": "F002",
+   "span": {
+    "start": 15,
+    "end": 21,
+    "quote": "быстро"
+   },
+   "related": null,
+   "explanation": "Формулировка не проверяема: нельзя составить тест-кейс. Нужна измеримая граница.",
+   "rule": "ISO/IEC/IEEE 29148: проверяемость (verifiable)",
+   "suggestion": {
+    "before": "быстро",
+    "after": "<измеримое значение>"
+   },
+   "question": "Какое измеримое значение подразумевается под «быстро»?"
+  },
+  {
+   "id": "iss-9be391ebdd",
+   "type": "formulation",
+   "severity": "info",
+   "confidence": 1.0,
+   "light": "red",
+   "fragment_id": "F002",
+   "span": {
+    "start": 53,
+    "end": 58,
+    "quote": "и/или"
+   },
+   "related": null,
+   "explanation": "«и/или» допускает две разные реализации.",
+   "rule": "ISO/IEC/IEEE 29148: однозначность (unambiguous)",
+   "suggestion": {
+    "before": "и/или",
+    "after": "<«и» или «или»>"
+   },
+   "question": "Нужно выполнить оба условия или достаточно одного?"
+  }
+ ],
+ "questions": [
+  "Какое измеримое значение подразумевается под «быстро»?",
+  "Нужно выполнить оба условия или достаточно одного?"
+ ],
+ "checked": {
+  "fragments": 6,
+  "active": 5,
+  "skipped_status": 1
+ },
+ "seconds": 0.25
+}

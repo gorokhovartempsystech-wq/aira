@@ -1,0 +1,32 @@
+# секреты
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# окружения и кэши
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+node_modules/
+.DS_Store
+
+# модели и большие артефакты — в GitHub Releases, не в git
+models/
+engine/models/
+engine/dist/
+engine/data/bench/
+engine/data/cache/
+*.onnx
+*.gguf
+*.safetensors
+
+# реальные документы — никогда
+real-data/
+*-private/
+engine/data/train/pairs.jsonl
+engine/data/spaces/gen/_raw/

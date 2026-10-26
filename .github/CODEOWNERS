@@ -1,0 +1,8 @@
+# Ревьюер по умолчанию для каждой папки. Заменить @… на GitHub-логины команды.
+*                 @NIKITA_GITHUB
+/engine/          @ARTEM_GITHUB
+/contracts/       @ARTEM_GITHUB @NIKITA_GITHUB
+/app/             @NIKITA_GITHUB
+/design/          @ANNA_GITHUB
+/docs/research/   @ANNA_GITHUB
+/docs/product/    @NIKITA_GITHUB @ANNA_GITHUB
