@@ -27,7 +27,7 @@ from tests.acceptance.test_docx_storage_transactions import observe_backend, wai
 def parent(empty_pg_engine, apply_migrations):
     apply_migrations(empty_pg_engine, V8)
     document_id = seed_v8(empty_pg_engine)
-    apply_migrations(empty_pg_engine)
+    apply_migrations(empty_pg_engine, V9)
     return empty_pg_engine, document_id
 
 

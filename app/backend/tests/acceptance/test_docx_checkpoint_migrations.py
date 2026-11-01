@@ -123,8 +123,8 @@ def test_upgrade_repeat_clean_downgrade_preserves_all_v8_data(empty_pg_engine, a
     document_id = seed_v8(empty_pg_engine)
     with empty_pg_engine.connect() as conn:
         before = previous(conn)
-    apply_migrations(empty_pg_engine)
-    apply_migrations(empty_pg_engine)
+    apply_migrations(empty_pg_engine, V9)
+    apply_migrations(empty_pg_engine, V9)
     with empty_pg_engine.begin() as conn:
         assert conn.scalar(text("SELECT version_num FROM alembic_version")) == V9
         assert previous(conn) == before
@@ -133,7 +133,7 @@ def test_upgrade_repeat_clean_downgrade_preserves_all_v8_data(empty_pg_engine, a
     with empty_pg_engine.connect() as conn:
         assert conn.scalar(text("SELECT version_num FROM alembic_version")) == V8
         assert TABLE not in inspect(conn).get_table_names() and previous(conn) == before
-    apply_migrations(empty_pg_engine)
+    apply_migrations(empty_pg_engine, V9)
     with empty_pg_engine.connect() as conn:
         assert previous(conn) == before and conn.scalar(text(f"SELECT count(*) FROM {TABLE}")) == 0
 
@@ -181,7 +181,7 @@ def test_exact_columns_model_primary_and_foreign_keys(pg_engine):
 def test_downgrade_refuses_unsaved_work_atomically(empty_pg_engine, apply_migrations, phase):
     apply_migrations(empty_pg_engine, V8)
     document_id = seed_v8(empty_pg_engine)
-    apply_migrations(empty_pg_engine)
+    apply_migrations(empty_pg_engine, V9)
     with empty_pg_engine.begin() as conn:
         insert(conn, row(document_id, phase))
         before = conn.execute(text(f"SELECT * FROM {TABLE}")).all(), previous(conn)

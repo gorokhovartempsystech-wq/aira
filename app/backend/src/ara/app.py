@@ -53,5 +53,11 @@ def create_app(*, document_runtime: "DocumentRuntime | None" = None) -> FastAPI:
         install_editor_json(app, document_runtime)
         install_editor_downloads(app)
         install_editor_discard(app)
+        if os.environ.get("ARA_MODELS_DIR"):
+            from ara.ml_review.editor import install_editor
+            from ara.ml_review.http import install_model_review
+
+            install_model_review(app, document_runtime, os.environ["ARA_MODELS_DIR"])
+            install_editor(app, document_runtime)
 
     return app

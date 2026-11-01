@@ -15,24 +15,43 @@
 
 ## Что опубликовано
 
-`engine/` содержит ML-движок, локальный браузерный прототип, обучение и экспериментальные проверки. `contracts/` — HTTP-контракт и примеры. `app/backend/` содержит проверенный backend с PostgreSQL, DOCX-редактором, сохранением/восстановлением и строгой проверкой ответов модели. Состав, 2704 tests +24 subtests и ограничения — в [handoff](app/backend/PUBLICATION.md). Реальная интеграция с текущим engine ещё требует отдельного адаптера.
+`engine/` содержит ML-движок, локальный браузерный прототип, обучение и экспериментальные проверки. `contracts/` — HTTP-контракт и примеры. `app/backend/` содержит проверенный backend с PostgreSQL, DOCX-редактором, сохранением/восстановлением и строгой проверкой ответов модели. Состав, 2704 tests +24 subtests и ограничения — в [handoff](app/backend/PUBLICATION.md). В этой ветке подключён реальный локальный engine к `/editor`: импорт поддержанного DOCX → проверка → замечания с цитатами. Старый worker остаётся явно обозначенной заглушкой и не используется этим путём.
 
 Прототип не является готовым десктопным установщиком. Его экспериментальная проверка влияния правки сохранена для исследований и не расширяет согласованный MVP.
 
-## Быстрый старт
+## Запуск приложения с реальной моделью
+
+Это запуск для разработки (Python 3.12, PostgreSQL), не desktop-установщик. AIRA помогает системному аналитику находить места для проверки; решение и исправления остаются за человеком.
+
+Ветка интеграции: `artem/ml-backend-integration-20261101`. Она включает backend из PR #14; публикация ветки не означает слияние в `main`.
 
 ```bash
-cd engine
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements-engine.txt -r requirements-test.txt
-python -m pytest -q
-# Указать путь к отдельно полученному пакету моделей
-python -m aira_ml.proto --models /path/to/models-0.2m --port 8780
-# Открыть http://127.0.0.1:8780
+git checkout artem/ml-backend-integration-20261101
+python3.12 -m venv app/backend/.venv
+app/backend/.venv/bin/python -m pip install -e './app/backend[dev]' -r engine/requirements-engine.txt
+
+# Нужен доступ к приватному репозиторию через GitHub CLI.
+gh release download models-0.2m --repo gorokhovartempsystech-wq/aira --pattern 'aira-models-0.2m.zip' --dir .local-models
+app/backend/.venv/bin/python -m zipfile -e .local-models/aira-models-0.2m.zip .local-models
+PYTHONPATH=engine app/backend/.venv/bin/python -m aira_ml.verify_pack .local-models/models-0.2m
+
+# Укажите URL своей отдельной локальной PostgreSQL. Не используйте рабочую БД команды.
+export ARA_DATABASE_URL='postgresql+psycopg://USER:PASSWORD@127.0.0.1:5432/aira_dev'
+export ARA_MODELS_DIR="$PWD/.local-models/models-0.2m"
+export ARA_ENVIRONMENT=local
+cd app/backend
+.venv/bin/alembic upgrade head
+bash scripts/dev_model.sh
+# http://127.0.0.1:8000/editor
 ```
 
-Рабочая конфигурация: rubert-tiny2 + pair2 + nli5, ONNX int8 на CPU, пакет около 402 МБ. Веса не входят в Git; наличие опубликованного Release проверяйте отдельно. Код интеграции описан в [app/README.md](app/README.md), запуск и исследования — в [engine/README.md](engine/README.md).
+Команды выше для Bash/macOS/WSL; это не проверка Windows/macOS-установщика. PostgreSQL должна быть заранее создана и запущена. Веса не скачиваются при запуске приложения. Пакет содержит rubert-tiny2 + pair2 + nli5, ONNX int8 на CPU; распакованный размер около402МБ. Новые экспериментальные модели и таблицы к приложению не подключены.
+
+На `/editor` нажмите импорт DOCX, выберите [учебный пример](docs/examples/contradiction.docx) и запустите проверку. Пример содержит несовместимые границы одной суммы. Можно также создать свой документ в редакторе. [Подробности интеграции и тестов](app/backend/docs/local-model-integration.md).
+
+**Ограничения:** анализатор принимает ограниченный набор структур DOCX. Таблицы, нумерованные списки и неподдержанные Word-части могут вызвать явный отказ: файл сохранён, но не проверен. Произвольный Word-документ пока не поддержан. Импортированный файл в `/editor` доступен для просмотра и проверки; ручные правки такого файла — через `/workspace`. Это адаптация макета команды, не завершённый rich-text-редактор. Отсутствие замечаний не гарантирует отсутствие проблем.
+
+Старый ML-прототип доступен отдельно через `python -m aira_ml.proto --models /path/to/models-0.2m --port 8780`; он не заменяет backend-сценарий выше.
 
 ## Команда
 
