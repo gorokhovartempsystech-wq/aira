@@ -30,3 +30,9 @@ real-data/
 *-private/
 engine/data/train/pairs.jsonl
 engine/data/spaces/gen/_raw/
+
+# External corpora and unreviewed generated documents stay local
+engine/data/external/
+engine/data/spaces/gen5/
+engine/data/spaces/gen5_raw/
+engine/data/train/nli_real_neg.jsonl
