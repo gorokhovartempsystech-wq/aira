@@ -307,6 +307,19 @@ def req_nli_rows(paths):
                         rows.append((new, fr[tid]["text"], "neutral", s["id"]))
                 if filler:
                     rows.append((new, rnd.choice(filler)["text"], "neutral", s["id"]))
+                # два места, которые отражают одно и то же действующее правило, друг другу не противоречат
+                # («заказ получен 15 дней назад → кнопки нет» и «вернуть можно в течение 14 дней»): nli4 этого не знала
+                ms = [m for m in fact["mentions"] if fr[m]["status"] in ("active", "exception")]
+                for x, y in list(zip(ms, ms[1:]))[:3]:
+                    rows.append((fr[x]["text"], fr[y]["text"], "neutral", s["id"]))
+            # соседние пункты (поля одного API, строки одного маппинга) — не противоречие
+            groups = {}
+            for f in s["fragments"]:
+                if f["status"] == "active":
+                    groups.setdefault((f["document"], f["type"]), []).append(f["text"])
+            for g in groups.values():
+                for x, y in list(zip(g, g[1:]))[:2]:
+                    rows.append((x, y, "neutral", s["id"]))
     both = []
     for a, b, l, sp in rows:                 # противоречие симметрично — учим в обе стороны
         both += [(a, b, l, sp), (b, a, l, sp)]
@@ -326,10 +339,23 @@ def contra_metrics(model, tok, rows):
     return out
 
 
+def real_noise(model, tok, pairs):
+    """Доля ложных «противоречит» на реальных парах похожих пунктов (как в движке: min по двум направлениям)."""
+    if not pairs:
+        return {}
+    xs = [(r["a"], r["b"]) for r in pairs] + [(r["b"], r["a"]) for r in pairs]
+    p = logits_of(model, tok, xs, 192).softmax(1)[:, NLI["contradiction"]].numpy()
+    pc = np.minimum(p[:len(pairs)], p[len(pairs):])
+    return {f"≥{t}": f"{int((pc >= t).sum())} из {len(pairs)}" for t in (0.5, 0.85, 0.95)}
+
+
 def cmd_nli_req(a):
     from datasets import load_dataset
     from transformers import AutoModelForSequenceClassification, AutoTokenizer
     rows = req_nli_rows(a.spaces)
+    real = [json.loads(l) for l in open(a.real_neg, encoding="utf-8")] if a.real_neg else []
+    real_tr = [r for r in real if r["split"] == "train"]
+    real_dv = [r for r in real if r["split"] == "dev"]
     spaces = sorted({r[3] for r in rows})
     random.Random(7).shuffle(spaces)
     dev_sp = set(spaces[:max(1, len(spaces) // 6)])
@@ -340,20 +366,27 @@ def cmd_nli_req(a):
     tok = AutoTokenizer.from_pretrained(a.init)
     model = AutoModelForSequenceClassification.from_pretrained(a.init).to(device()).eval()
     before = contra_metrics(model, tok, dv)
+    noise_before = real_noise(model, tok, real_dv)
     wanli = [(r["premise"], r["hypothesis"], NLI[r["label"]]) for r in load_dataset("deepvk/ru-WANLI")["train"]]
     random.Random(1).shuffle(wanli)
     data = [(x, y, NLI[l]) for x, y, l, _ in tr] + wanli[:a.wanli]
+    data += [(r["a"], r["b"], NLI["neutral"]) for r in real_tr] + [(r["b"], r["a"], NLI["neutral"]) for r in real_tr]
+    print(f"реальных отрицательных пар: обучение {len(real_tr)} (×2 направления), проверка {len(real_dv)}")
     t = time.time()
     model = train_loop(model, tok, data, 3, a.epochs, a.lr, a.bs, 192, log_every=100)
     after = contra_metrics(model, tok, dv)
+    noise_after = real_noise(model, tok, real_dv)
     Path(a.out).mkdir(parents=True, exist_ok=True)
     model.save_pretrained(a.out)
     tok.save_pretrained(a.out)
     info = {"stage": "nli-req", "init": a.init, "base": "ai-forever/ruBert-base", "req_pairs_train": len(tr), "wanli_mix": a.wanli,
+            "real_neg_train": len(real_tr), "real_neg_dev": len(real_dv),
             "dev_pairs": len(dv), "dev_spaces": sorted(dev_sp), "contradiction_before": before,
-            "contradiction_after": after, "epochs": a.epochs, "minutes": round((time.time() - t) / 60, 1)}
+            "contradiction_after": after, "real_noise_before": noise_before, "real_noise_after": noise_after,
+            "epochs": a.epochs, "minutes": round((time.time() - t) / 60, 1)}
     (Path(a.out) / "aira_train.json").write_text(json.dumps(info, ensure_ascii=False, indent=1), encoding="utf-8")
-    print(json.dumps({k: info[k] for k in ("req_pairs_train", "dev_pairs", "contradiction_before", "contradiction_after", "minutes")},
+    print(json.dumps({k: info[k] for k in ("req_pairs_train", "real_neg_train", "dev_pairs", "contradiction_before",
+                                           "contradiction_after", "real_noise_before", "real_noise_after", "minutes")},
                      ensure_ascii=False))
 
 
@@ -373,6 +406,7 @@ def main():
     s.add_argument("--spaces", nargs="+", default=[str(ROOT / "data/spaces/gen/*-v3.json")])
     s.add_argument("--epochs", type=int, default=2); s.add_argument("--lr", type=float, default=2e-5)
     s.add_argument("--bs", type=int, default=32); s.add_argument("--wanli", type=int, default=20000)
+    s.add_argument("--real-neg", default="", help="jsonl из mine_neg: реальные пары похожих пунктов, метка «нейтрально»")
     a = ap.parse_args()
     {"nli": cmd_nli, "pairs": cmd_pairs, "eval": cmd_eval, "export": cmd_export, "nli-req": cmd_nli_req}[a.cmd](a)
 

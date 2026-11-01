@@ -45,7 +45,7 @@ FLAG = {"contradiction", "update"}
 TYPES = ("formulation", "duplicate", "contradiction", "affected")
 
 # пороги — стартовые, уточнять на размеченных данных
-DUP_RED, DUP_YELLOW = 0.95, 0.90         # косинус эмбеддингов
+DUP_RED, DUP_YELLOW = 0.97, 0.94         # косинус эмбеддингов; 0.90–0.93 на реальных ТЗ — почти всегда разные пункты
 NLI_RED, NLI_YELLOW = 0.95, 0.85         # «противоречит» в ОБЕ стороны (NLI); общий NLI шумит — порог высокий
 PAIR_RED = 0.60                          # уверенность «затронуто» для красного
 K_MEANING, K_NLI = 8, 3
@@ -84,9 +84,41 @@ class Onnx:
         return np.concatenate(out) if out else np.zeros((0, 1), np.float32)
 
 
+BOILERPLATE = re.compile(r"(?i)^(требования\s+не\s+предъявляются|не\s+требуется|не\s+предусмотрен[оаы]?|отсутству(ет|ют)"
+                         r"|не\s+применяется|в\s+соответствии\s+с\s+[^.]{0,40})\.?$")
+_TABLE_ROW = re.compile(r"\s\|\s")
+# перечень нормативных ссылок: названия стандартов похожи друг на друга, но это разные документы, а не повторы
+NORMATIVE = re.compile(r"(?i)^[«\"]?\s*(ГОСТ|ISO|IEC|IEEE|СНиП|СП\s\d|РД\s|СанПиН|Федеральн\w+ закон|Постановлени|Приказ|Указ\b"
+                       r"|Распоряжени|Методическ\w+ документ|Руководящ\w+ документ)|\b№\s?\d+-ФЗ\b|[»\"],?\s+утвержд\w+")
+# договорная часть ТЗ на закупку: оплата, гарантия, приёмка, санкции — условия договора, а не требования к системе;
+# «аванс 30 %» и «остаток 70 %» модель принимала за противоречие
+CONTRACT = re.compile(r"(?i)\bаванс|\bоплат[аыуие]|\bоплачива|гарантийн\w+ срок|неустойк|\bштраф|\bпени\b|банковск\w+ дн"
+                      r"|сдачи[-–]при[её]мк|акт\w* (об оказанных|сдачи|при[её]ма)|цен\w+ (договора|контракта)"
+                      r"|срок\w* (выполнения|оказания) (работ|услуг)|мотивированн\w+ отказ")
+# сторона договора: без неё «оплата» — это функция системы («пользователь оплачивает заказ картой»)
+PARTY = re.compile(r"(?i)\bзаказчик|\bисполнител|\bподрядчик|\bпоставщик|\bсторон[аыуе]?\b|\bдоговор|\bконтракт")
+
+
+def checkable(f):
+    """Можно ли проверять пункт на повторы и противоречия. На реальных ТЗ (dedoc, 44 документа) почти весь
+    шум давали не требования: строки таблиц, вводки с двоеточием, шаблонные «Требования не предъявляются»,
+    короткие строки перечней (адреса, названия). Формулировки (lint) проверяются у всех пунктов."""
+    t = f["text"].strip()
+    if len(t) < 30 or t.endswith(":") or BOILERPLATE.match(t) or NORMATIVE.search(t):
+        return False
+    if (CONTRACT.search(t) and PARTY.search(t)) or CONTRACT.search(f.get("document", "")):
+        return False
+    if _TABLE_ROW.search(t):                          # строка таблицы: «№ | наименование | ед. | кол-во»
+        cells = [c.strip() for c in t.split("|")]
+        if len(cells) >= 3 or sum(bool(re.fullmatch(r"[\d\s.,%№\-–()]+", c)) for c in cells) >= 1:
+            return False
+    return True
+
+
 def siblings(a, b):
-    """Соседние однотипные пункты (поля одного API, строки одного маппинга): разные значения у разных
-    сущностей — это не противоречие, а структура. Общий префикс ≥ 15 символов в одном документе и типе."""
+    """Соседние однотипные пункты (поля одного API, строки одного маппинга, элементы одного перечня): разные
+    значения у разных сущностей — это не противоречие, а структура. Один документ и тип, и либо общий
+    префикс ≥ 15 символов, либо оба коротких пункта (< 90 символов) без «должен/обязан» — элементы перечня."""
     if a.get("document") != b.get("document") or a.get("type") != b.get("type"):
         return False
     n = 0
@@ -94,7 +126,14 @@ def siblings(a, b):
         if x != y:
             break
         n += 1
-    return n >= 15
+    if n >= 15:
+        return True
+    short = lambda t: len(t) < 90 and not re.search(r"(?i)\bдолж|\bобязан|\bнеобходимо|\bзапрещ|\bне\s+допуска", t)
+    return short(a["text"]) and short(b["text"])
+
+
+class Cancelled(Exception):
+    """Пользователь остановил анализ: progress-колбэк бросает это исключение."""
 
 
 def softmax(x, t=1.0):
@@ -187,11 +226,17 @@ class Engine:
     def embed(self, frags):
         return self.emb.run([f["text"] for f in frags])
 
-    def review(self, frags, disabled=(), dismissed=()):
+    def review(self, frags, disabled=(), dismissed=(), progress=None, deadline=None):
+        """progress(stage, доля 0–1) вызывается между этапами и внутри проверки логики; чтобы остановить
+        анализ, колбэк бросает Cancelled. deadline — время (time.time()), после которого проверка логики
+        прерывается и ответ помечается partial: часть пар не проверена."""
         t = time.time()
+        step = progress or (lambda stage, pct: None)
         issues = []
+        partial = None
         active = [f for f in frags if f.get("status", "active") not in SKIP]
         # 1) формулировки — правила
+        step("formulation", 0.05)
         for f in active:
             for rule, s, e, q in lint(f["text"]):
                 issues.append({"id": self._id("formulation", f["id"], rule.code, s), "type": "formulation",
@@ -200,8 +245,11 @@ class Engine:
                                "explanation": rule.explanation, "rule": f"ISO/IEC/IEEE 29148: {rule.property}",
                                "suggestion": {"before": q, "after": AFTER.get(rule.code, "<уточнить>")},
                                "question": QUESTION.get(rule.code, "").format(q=q) or None})
-        # 2) дубли и 3) противоречия — по близости эмбеддингов
+        # 2) дубли и 3) противоречия — по близости эмбеддингов, только среди пунктов-требований
+        n_active = len(active)
+        active = [f for f in active if checkable(f)]
         if len(active) > 1 and ("duplicate" not in disabled or "contradiction" not in disabled):
+            step("duplicate", 0.2)
             v = self.embed(active)
             sim = v @ v.T
             np.fill_diagonal(sim, -1)
@@ -216,10 +264,19 @@ class Engine:
                     pairs.append((a, b, float(sim[a, b])))
             nli_p = None
             if pairs and "contradiction" not in disabled:
-                prem = [active[a]["text"] for a, b, _ in pairs] + [active[b]["text"] for a, b, _ in pairs]
-                hyp = [active[b]["text"] for a, b, _ in pairs] + [active[a]["text"] for a, b, _ in pairs]
-                pr = softmax(self.nli.run(prem, hyp))[:, self.nli_labels.index("contradiction")]
-                nli_p = np.minimum(pr[:len(pairs)], pr[len(pairs):])   # противоречие симметрично
+                ci, chunk, done = self.nli_labels.index("contradiction"), 32, []
+                for k in range(0, len(pairs), chunk):
+                    if deadline and time.time() > deadline:
+                        partial = f"не хватило времени: логика проверена для {k} из {len(pairs)} пар похожих пунктов"
+                        break
+                    step("logic", 0.3 + 0.65 * k / len(pairs))
+                    part = pairs[k:k + chunk]
+                    prem = [active[a]["text"] for a, b, _ in part] + [active[b]["text"] for a, b, _ in part]
+                    hyp = [active[b]["text"] for a, b, _ in part] + [active[a]["text"] for a, b, _ in part]
+                    pr = softmax(self.nli.run(prem, hyp))[:, ci]
+                    done.append(np.minimum(pr[:len(part)], pr[len(part):]))   # противоречие симметрично
+                nli_p = np.concatenate(done) if done else np.zeros(0)
+            step("questions", 0.97)
             for n, (a, b, s) in enumerate(pairs):
                 fa, fb = active[a], active[b]
                 if s >= DUP_YELLOW and "duplicate" not in disabled:
@@ -229,7 +286,7 @@ class Engine:
                                    "related": {"fragment_id": fa["id"], "quote": fa["text"], "status": fa.get("status", "active")},
                                    "explanation": "Почти то же самое уже сказано в другом месте.", "rule": None,
                                    "suggestion": None, "question": "Оставить одно из двух требований или они о разном?"})
-                elif (nli_p is not None and nli_p[n] >= NLI_YELLOW and not siblings(fa, fb)
+                elif (nli_p is not None and n < len(nli_p) and nli_p[n] >= NLI_YELLOW and not siblings(fa, fb)
                       and "exception" not in (fa.get("status"), fb.get("status"))):
                     p = float(nli_p[n])
                     issues.append({"id": self._id("contradiction", fa["id"], fb["id"]), "type": "contradiction",
@@ -242,8 +299,9 @@ class Engine:
         issues = [x for x in issues if x["type"] not in disabled and x["id"] not in set(dismissed)]
         return {"engine": VERSION, "models": self.manifest["version"], "issues": issues,
                 "questions": sorted({x["question"] for x in issues if x.get("question")}),
-                "checked": {"fragments": len(frags), "active": len(active), "skipped_status": len(frags) - len(active)},
-                "seconds": round(time.time() - t, 2)}
+                "checked": {"fragments": len(frags), "active": n_active, "skipped_status": len(frags) - n_active,
+                            "pairwise": len(active)},
+                "partial": partial, "seconds": round(time.time() - t, 2)}
 
     # --- влияние правки (H1) -------------------------------------------------------------
 

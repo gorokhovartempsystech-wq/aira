@@ -50,12 +50,12 @@ class CLSEncoder(torch.nn.Module):
         return torch.nn.functional.normalize(h, dim=-1)
 
 
-def export_embedder(out):
+def export_embedder(out, src=EMBEDDER):
     from transformers import AutoModel, AutoTokenizer
     d = out / "embedder"
     d.mkdir(parents=True, exist_ok=True)
-    tok = AutoTokenizer.from_pretrained(EMBEDDER)
-    model = CLSEncoder(AutoModel.from_pretrained(EMBEDDER)).eval()
+    tok = AutoTokenizer.from_pretrained(src)
+    model = CLSEncoder(AutoModel.from_pretrained(src)).eval()
     x = tok(["пример требования"], return_tensors="pt")
     names = ["input_ids", "attention_mask", "token_type_ids"]
     torch.onnx.export(model, tuple(x[k] for k in names), str(d / "model.onnx"), input_names=names,
@@ -72,8 +72,13 @@ def export_embedder(out):
     with torch.no_grad():
         ref = model(**{k: torch.tensor(xx[k]) for k in names}).numpy()
     cos = float(np.mean(np.sum(q * ref, 1) / np.linalg.norm(q, axis=1)))
-    return {"source": EMBEDDER, "license": LICENSES[EMBEDDER], "pooling": "cls+normalize", "dim": int(q.shape[1]),
+    info = {"source": str(src), "license": LICENSES[EMBEDDER], "pooling": "cls+normalize", "dim": int(q.shape[1]),
             "int8_vs_fp32_cosine": round(cos, 4)}
+    if src != EMBEDDER:                               # дообученный: база и данные — из aira_train.json
+        train = json.loads((Path(src) / "aira_train.json").read_text(encoding="utf-8"))
+        info |= {"base": EMBEDDER, "license": LICENSES[EMBEDDER] + "; дообучение: ru-HNP (Apache-2.0), ParaPhraser (MIT), "
+                 "синтетика — см. PROVENANCE.md", "train": train}
+    return info
 
 
 def export_classifier(src, out, name):
@@ -99,6 +104,7 @@ def main():
     ap.add_argument("--pair", required=True)
     ap.add_argument("--nli", required=True)
     ap.add_argument("--out", required=True)
+    ap.add_argument("--embedder", default=EMBEDDER, help="папка дообученного эмбеддера (train_emb) или имя на HF")
     a = ap.parse_args()
     out = Path(a.out)
     if out.exists():
@@ -106,7 +112,7 @@ def main():
     out.mkdir(parents=True)
     man = {"name": "aira-models", "version": out.name.replace("models-", ""), "built": time.strftime("%Y-%m-%d %H:%M"),
            "runtime": "onnxruntime (CPU), int8 dynamic quantization",
-           "models": {"embedder": export_embedder(out), "pair": export_classifier(a.pair, out, "pair"),
+           "models": {"embedder": export_embedder(out, a.embedder), "pair": export_classifier(a.pair, out, "pair"),
                       "nli": export_classifier(a.nli, out, "nli")}}
     man["models"]["nli"]["labels"] = ["entailment", "neutral", "contradiction"]   # порядок как в train_cross.NLI
     man["models"]["nli"]["license"] = "Apache-2.0 (ruBert-base) + Apache-2.0 (ru-WANLI)"
