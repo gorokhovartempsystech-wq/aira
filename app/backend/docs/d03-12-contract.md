@@ -1,0 +1,27 @@
+# D03-12 — стили абзацев и native списки
+
+31 октября 2026. Отдельный backend-цикл F05/F11 после 0f7d1bd (D03-11). Не менять frontend Ани или проверочный workspace. Подготовка: этот контракт и tests/acceptance/test_docx_formats.py до реализации. Source: новый ara.docx_package.formatting/**, минимальный private multi-part repack в structure/_package.py без изменения прежнего публичного API; собственные tests/docx_package/test_format_*.py, docs/d03-12-result.md. Другие старые source/tests, БД/HTTP/зависимости/runner/tasks/progress не менять.
+
+## API
+
+Frozen/slotted ParagraphFormat(anchor: SourceAnchor, expected_text: str, style_id: str|None = None, list_kind: str = "none", list_id: str|None = None), FormatLimits(max_formats=1000, max_aux_nodes=100000, max_aux_depth=128), FormattingError и export_formats(data: bytes, formats: tuple[ParagraphFormat,...], *, limits: DocxLimits|None=None, projection_limits: ProjectionLimits|None=None, format_limits: FormatLimits|None=None) -> bytes.
+
+Команда задаёт **весь прямой paragraph style/list**, а не toggle. style_id — существующий paragraph style ID (например Heading1/2/3, Normal, ListBullet/ListNumber у шаблона AIRA); None удаляет прямой pStyle и оставляет default документа. Не создавать/не подменять стили импортированного документа и не угадывать localized IDs. Непустой ID до 255 Unicode code points, XML-safe без control whitespace; namespace/markup не вводится через текст ID. Стиль должен быть единственным с этим ID, type paragraph, в единственной корректно связанной styles part. Missing/ambiguous/wrong-kind style — unsupported_format.
+
+list_kind: none/bullet/numbered. none требует list_id=None и удаляет прямой numPr, не трогая другие pPr properties. Для списка уровень пока 0. list_id — существующий положительный canonical decimal numId ≤ 2147483647: продолжить эту последовательность, проверив единственность num/abstractNum и effective level-0 numFmt (bullet либо decimal). Учитывать level-0 overrides; несовпадение/неизвестный ID/неоднозначные definitions — unsupported_format.
+
+Если list_id=None и kind список, создать новую последовательность. Соседние **в исходном body** commands с тем же list_kind и без list_id получают одну новую последовательность; пропуск абзаца/таблица/другой kind/явная ссылка разрывают группу. Группы и ID выделяются по source order, независимо от порядка commands. Каждая группа начинает с 1, получает новый abstractNum/num с ещё не занятыми int32 IDs. Numbering.xml должен уже существовать как одна internal part с правильным content type/root; не добавлять новые parts/relationships в этом цикле. Для blank AIRA он есть. Новый single-level bullet «•»/decimal «%1.»: left=360/hanging=360, tab stop num=360, Arial, start=1. Это native numbering, не маркер в тексте.
+
+Настоящие типы без coercion, SourceAnchor paragraph main-body как в D03-11, exact expected_text/hash. Перепроверять frozen bypass; текст не попадает в repr/errors. Ошибки invalid_input, format_limit_exceeded, stale_source, invalid_anchor, text_mismatch, conflicting_formats, unsupported_format. Лимиты — положительные int, включительные, auxiliary XML nodes/depth проверяются до allocation lexical tree. Нижние DocxError/ProjectionError сохраняются.
+
+## Атомарность и сохранение
+
+Одна команда на body paragraph; дубль — conflicting_formats. Весь batch валидируется до возврата. Сохранять pPr свойства, кроме явных pStyle/numPr, с правильным порядком OOXML. Run XML/text/inline formatting не меняются. Добавление pPr к selfclosing p/pPr раскрывает только этот контейнер, сохраняя его attributes; новые XML nodes имеют собственный локальный prefix с WML namespace исходника. UTF-8/UTF-16/Strict/local namespaces как D03-11. Не сериализовать целый main/styles/numbering.
+
+Styles.xml всегда неизменен. Numbering.xml меняется только при создании новых списков; существующие definitions побайтово сохраняются, новые abstractNum вставляются до num, новые num до numIdMacAtCleanup, без duplicate IDs. Прочие части/ZIP metadata — прежние гарантии D03-11. Output проверяется прежними package/projection validators, текст/порядок всех blocks и всех старых runs остаётся прежним, изменённые style_id/numId/level подтверждаются новой проекцией.
+
+При фактической правке действуют protection/signature/settings и консервативные global field/range/target opaque/annotation/sectPr gates D03-11. Не обходить подписи/защиту, не править hyperlinks/ячейки. Точный semantic no-op (тот же style и отсутствие списка либо явный тот же list ID/level-0) после проверки аргументов/definitions возвращает исходные bytes без повторной упаковки и обхода защиты. None list_id у списка всегда означает новый список, а не no-op. Пустой batch валидирует исходник/лимиты и возвращает точные bytes.
+
+## Проверка
+
+Новый/сброшенный/сохранённый style, Heading1/2/3 на AIRA, сохранение текста/пробелов/Unicode/formatted runs и других pPr, selfclosing pPr/p, native bullet/numbered группировка/перезапуск/продолжение/снятие, детерминизм batch, lexical numbering и main preservation, Strict/UTF16, missing/ambiguous/invalid definitions и limits, malformed DTO, stale/duplicate anchors, protected/no-op, inert API. Сначала red на проверенных synthetic fixtures, затем frozen acceptance. Общий bash scripts/check.sh и baseline основной БД. Визуально отрендерить через новый API заголовки/списки в шаблоне AIRA, просмотреть все страницы; Word отдельно не заявлять. После отчёта и локального коммита перейти к отдельному D03-13, не смешивая критерии.

@@ -1,0 +1,488 @@
+{
+  "$defs": {
+    "ChangeGroup": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "minLength": 1,
+          "pattern": "^(?=[\\s\\S]*\\S)[^\\u0000\\uD800-\\uDFFF]*$",
+          "title": "Id",
+          "type": "string"
+        },
+        "title": {
+          "minLength": 1,
+          "pattern": "^(?=[\\s\\S]*\\S)[^\\u0000\\uD800-\\uDFFF]*$",
+          "title": "Title",
+          "type": "string"
+        },
+        "basis": {
+          "enum": [
+            "explicit_requirement",
+            "design_proposal"
+          ],
+          "title": "Basis",
+          "type": "string"
+        },
+        "rationale": {
+          "minLength": 1,
+          "pattern": "^(?=[\\s\\S]*\\S)[^\\u0000\\uD800-\\uDFFF]*$",
+          "title": "Rationale",
+          "type": "string"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/Evidence"
+          },
+          "minItems": 1,
+          "title": "Evidence",
+          "type": "array"
+        },
+        "depends_on_group_ids": {
+          "items": {
+            "minLength": 1,
+            "pattern": "^(?=[\\s\\S]*\\S)[^\\u0000\\uD800-\\uDFFF]*$",
+            "type": "string"
+          },
+          "title": "Depends On Group Ids",
+          "type": "array",
+          "uniqueItems": true
+        },
+        "blocking_question_ids": {
+          "items": {
+            "minLength": 1,
+            "pattern": "^(?=[\\s\\S]*\\S)[^\\u0000\\uD800-\\uDFFF]*$",
+            "type": "string"
+          },
+          "title": "Blocking Question Ids",
+          "type": "array",
+          "uniqueItems": true
+        },
+        "patches": {
+          "items": {
+            "$ref": "#/$defs/Patch"
+          },
+          "minItems": 1,
+          "title": "Patches",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "basis",
+        "rationale",
+        "evidence",
+        "depends_on_group_ids",
+        "blocking_question_ids",
+        "patches"
+      ],
+      "title": "ChangeGroup",
+      "type": "object"
+    },
+    "ChangeOutcome": {
+      "additionalProperties": false,
+      "properties": {
+        "context_item_id": {
+          "minLength": 1,
+          "pattern": "^(?=[\\s\\S]*\\S)[^\\u0000\\uD800-\\uDFFF]*$",
+          "title": "Context Item Id",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "proposed",
+            "already_satisfied",
+            "needs_clarification",
+            "out_of_scope"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "rationale": {
+          "minLength": 1,
+          "pattern": "^(?=[\\s\\S]*\\S)[^\\u0000\\uD800-\\uDFFF]*$",
+          "title": "Rationale",
+          "type": "string"
+        },
+        "change_group_ids": {
+          "items": {
+            "minLength": 1,
+            "pattern": "^(?=[\\s\\S]*\\S)[^\\u0000\\uD800-\\uDFFF]*$",
+            "type": "string"
+          },
+          "title": "Change Group Ids",
+          "type": "array",
+          "uniqueItems": true
+        },
+        "question_ids": {
+          "items": {
+            "minLength": 1,
+            "pattern": "^(?=[\\s\\S]*\\S)[^\\u0000\\uD800-\\uDFFF]*$",
+            "type": "string"
+          },
+          "title": "Question Ids",
+          "type": "array",
+          "uniqueItems": true
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/Evidence"
+          },
+          "title": "Evidence",
+          "type": "array"
+        }
+      },
+      "required": [
+        "context_item_id",
+        "status",
+        "rationale",
+        "change_group_ids",
+        "question_ids",
+        "evidence"
+      ],
+      "title": "ChangeOutcome",
+      "type": "object"
+    },
+    "CoverageEntry": {
+      "additionalProperties": false,
+      "properties": {
+        "source": {
+          "enum": [
+            "base",
+            "context"
+          ],
+          "title": "Source",
+          "type": "string"
+        },
+        "id": {
+          "minLength": 1,
+          "pattern": "^(?=[\\s\\S]*\\S)[^\\u0000\\uD800-\\uDFFF]*$",
+          "title": "Id",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "analyzed",
+            "skipped"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "pattern": "^(?=[\\s\\S]*\\S)[^\\u0000\\uD800-\\uDFFF]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Reason"
+        }
+      },
+      "required": [
+        "source",
+        "id",
+        "status",
+        "reason"
+      ],
+      "title": "CoverageEntry",
+      "type": "object"
+    },
+    "Evidence": {
+      "additionalProperties": false,
+      "properties": {
+        "source": {
+          "enum": [
+            "base",
+            "context"
+          ],
+          "title": "Source",
+          "type": "string"
+        },
+        "id": {
+          "minLength": 1,
+          "pattern": "^(?=[\\s\\S]*\\S)[^\\u0000\\uD800-\\uDFFF]*$",
+          "title": "Id",
+          "type": "string"
+        },
+        "quote": {
+          "minLength": 1,
+          "pattern": "^[^\\u0000\\uD800-\\uDFFF]*$",
+          "title": "Quote",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source",
+        "id",
+        "quote"
+      ],
+      "title": "Evidence",
+      "type": "object"
+    },
+    "Finding": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "minLength": 1,
+          "pattern": "^(?=[\\s\\S]*\\S)[^\\u0000\\uD800-\\uDFFF]*$",
+          "title": "Id",
+          "type": "string"
+        },
+        "category": {
+          "enum": [
+            "ambiguity",
+            "contradiction",
+            "duplication",
+            "unverifiable",
+            "contract_mismatch"
+          ],
+          "title": "Category",
+          "type": "string"
+        },
+        "severity": {
+          "enum": [
+            "info",
+            "warning",
+            "critical"
+          ],
+          "title": "Severity",
+          "type": "string"
+        },
+        "assessment": {
+          "enum": [
+            "observed_inconsistency",
+            "needs_confirmation"
+          ],
+          "title": "Assessment",
+          "type": "string"
+        },
+        "title": {
+          "minLength": 1,
+          "pattern": "^(?=[\\s\\S]*\\S)[^\\u0000\\uD800-\\uDFFF]*$",
+          "title": "Title",
+          "type": "string"
+        },
+        "explanation": {
+          "minLength": 1,
+          "pattern": "^(?=[\\s\\S]*\\S)[^\\u0000\\uD800-\\uDFFF]*$",
+          "title": "Explanation",
+          "type": "string"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/Evidence"
+          },
+          "minItems": 1,
+          "title": "Evidence",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "category",
+        "severity",
+        "assessment",
+        "title",
+        "explanation",
+        "evidence"
+      ],
+      "title": "Finding",
+      "type": "object"
+    },
+    "NewBlock": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "heading",
+            "paragraph",
+            "list",
+            "table",
+            "code"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "text": {
+          "pattern": "^[^\\u0000\\uD800-\\uDFFF]*$",
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "text"
+      ],
+      "title": "NewBlock",
+      "type": "object"
+    },
+    "Patch": {
+      "additionalProperties": false,
+      "properties": {
+        "operation": {
+          "enum": [
+            "replace_block",
+            "insert_before",
+            "insert_after",
+            "delete_block"
+          ],
+          "title": "Operation",
+          "type": "string"
+        },
+        "target_block_id": {
+          "minLength": 1,
+          "pattern": "^(?=[\\s\\S]*\\S)[^\\u0000\\uD800-\\uDFFF]*$",
+          "title": "Target Block Id",
+          "type": "string"
+        },
+        "new_blocks": {
+          "items": {
+            "$ref": "#/$defs/NewBlock"
+          },
+          "title": "New Blocks",
+          "type": "array"
+        }
+      },
+      "required": [
+        "operation",
+        "target_block_id",
+        "new_blocks"
+      ],
+      "title": "Patch",
+      "type": "object"
+    },
+    "Question": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "minLength": 1,
+          "pattern": "^(?=[\\s\\S]*\\S)[^\\u0000\\uD800-\\uDFFF]*$",
+          "title": "Id",
+          "type": "string"
+        },
+        "prompt": {
+          "minLength": 1,
+          "pattern": "^(?=[\\s\\S]*\\S)[^\\u0000\\uD800-\\uDFFF]*$",
+          "title": "Prompt",
+          "type": "string"
+        },
+        "reason": {
+          "minLength": 1,
+          "pattern": "^(?=[\\s\\S]*\\S)[^\\u0000\\uD800-\\uDFFF]*$",
+          "title": "Reason",
+          "type": "string"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/Evidence"
+          },
+          "minItems": 1,
+          "title": "Evidence",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "prompt",
+        "reason",
+        "evidence"
+      ],
+      "title": "Question",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "contract_version": {
+      "const": "0.1.0",
+      "title": "Contract Version",
+      "type": "string"
+    },
+    "run_id": {
+      "minLength": 1,
+      "pattern": "^(?=[\\s\\S]*\\S)[^\\u0000\\uD800-\\uDFFF]*$",
+      "title": "Run Id",
+      "type": "string"
+    },
+    "base_version_id": {
+      "minLength": 1,
+      "pattern": "^(?=[\\s\\S]*\\S)[^\\u0000\\uD800-\\uDFFF]*$",
+      "title": "Base Version Id",
+      "type": "string"
+    },
+    "context_revision_id": {
+      "minLength": 1,
+      "pattern": "^(?=[\\s\\S]*\\S)[^\\u0000\\uD800-\\uDFFF]*$",
+      "title": "Context Revision Id",
+      "type": "string"
+    },
+    "review_status": {
+      "enum": [
+        "ready",
+        "needs_clarification"
+      ],
+      "title": "Review Status",
+      "type": "string"
+    },
+    "summary": {
+      "minLength": 1,
+      "pattern": "^(?=[\\s\\S]*\\S)[^\\u0000\\uD800-\\uDFFF]*$",
+      "title": "Summary",
+      "type": "string"
+    },
+    "coverage": {
+      "items": {
+        "$ref": "#/$defs/CoverageEntry"
+      },
+      "title": "Coverage",
+      "type": "array"
+    },
+    "findings": {
+      "items": {
+        "$ref": "#/$defs/Finding"
+      },
+      "title": "Findings",
+      "type": "array"
+    },
+    "change_groups": {
+      "items": {
+        "$ref": "#/$defs/ChangeGroup"
+      },
+      "title": "Change Groups",
+      "type": "array"
+    },
+    "questions": {
+      "items": {
+        "$ref": "#/$defs/Question"
+      },
+      "title": "Questions",
+      "type": "array"
+    },
+    "change_outcomes": {
+      "items": {
+        "$ref": "#/$defs/ChangeOutcome"
+      },
+      "title": "Change Outcomes",
+      "type": "array"
+    }
+  },
+  "required": [
+    "contract_version",
+    "run_id",
+    "base_version_id",
+    "context_revision_id",
+    "review_status",
+    "summary",
+    "coverage",
+    "findings",
+    "change_groups",
+    "questions",
+    "change_outcomes"
+  ],
+  "title": "AnalysisResult",
+  "type": "object"
+}

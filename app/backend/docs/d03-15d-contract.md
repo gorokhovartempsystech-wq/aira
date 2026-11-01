@@ -1,0 +1,17 @@
+# D03-15D — перенос строки внутри абзаца
+
+31 октября 2026, после ef33ffa. F05/F11, Sol 6.1 High. Backend intent, соответствующий Shift+Enter; DOM/IME/key bindings не входят. Один вызов EditorSession.insert_soft_break(*, expected_revision:int) -> прежний EditorSnapshot.
+
+Revision проверяется первой. Collapsed и forward/reverse selection внутри одного body paragraph поддержаны; multi-p selection -> EditorError unsupported_intent, без потери данных. Выделение нормализуется в lo/hi. Выбранные символы заменяются одним настоящим Word br (textWrapping по умолчанию), не LF внутри t и не границей p. Начало/конец/пустой p разрешены. Cursor в исходном p, offset=lo+1, affinity left, selection схлопнута.
+
+Paragraph count, исходные p wrapper/IDs/pPr/style/list identity не меняются; w:next и выход из списка не применяются. Нетронутые prefix/suffix runs, inline format и все прочие package ranges/parts/metadata сохраняются как в D03-14/B3/C. Break получает один direct run template по правилу B3: collapsed focus affinity; при выделении формат lo с affinity right независимо от направления. Ввод после break наследует этот формат. Native TAB/br/cr в исходном тексте остаются атомами. Переиспользовать ограниченный lexical patch; не сериализовать весь Word XML и не переводить существующие soft breaks в p boundaries.
+
+Одно фактическое изменение bytes — одна revision/history position. Undo/redo точно восстанавливают DOCX и selection; не объявлять projected text equality достаточным для no-op. Старые protection/range/annotation/unknown structure/style gates и package/projection/history budgets обязательны. Ошибка кандидата или формирования ответа сохраняет bytes/caret/saved mark/history целиком. Импорт/первый вызов не открывают файлы/сеть/БД, не читают env/secrets, не запускают процессы и не логируют содержимое.
+
+## Пути и приёмка
+
+Freeze до реализации: этот контракт и tests/acceptance/test_docx_editor_soft_break.py. Разрешены editor/_typing.py (private template умеет native br, прежние text/TAB call sites без изменения поведения), editor/_session.py (новый метод), дополнительные tests/docx_session/test_soft_break_*.py, docs/d03-15d-result.md и актуализация docs/development-queue.md. Старые core/exporters/DTO/tests/API/БД/UI/dependencies/runner/tasks/progress/AGENTS не менять. Локальный commit разрешён, push нет.
+
+Frozen acceptance: начало/середина/конец/пустой p; однопараграфное forward/reverse selection, замена controls; native br без literal LF в t; p count/style/list IDs прежние; affinity и сохранение inline format после последующего ввода; точные undo/redo/source selection; stale/multi-p/reply/history limit failure. Дополнительные encoding/Strict/local namespace, rich parts/metadata/protection/inert cases. Сначала red, затем реализация; полный bash scripts/check.sh и read-only baseline БД. Bundled render DOCX с heading и переносом в numbered item, просмотреть все страницы; Word отдельно не заявлять. После завершения оценить сложность точного durable working state D03-16 и сообщить нужный режим; обычного запроса «продолжи» не требуется.
+
+Errata после freeze 884fa24: новый budget-test обращался к несуществующему SessionSnapshot.dirty. Исправлено на существующее is_dirty, без изменения expected state, лимита, обязательного SessionError или остальных assertions. Требование сохранения saved mark остаётся тем же; старые тесты не затронуты. Техническая опечатка документирована отдельным коммитом, не добавляется фиктивный alias в DTO ради теста.

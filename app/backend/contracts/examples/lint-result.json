@@ -1,0 +1,65 @@
+{
+  "contract_version": "0.1.0",
+  "run_id": "run_demo_lint",
+  "base_version_id": "version_lint_1",
+  "context_revision_id": "context_lint_1",
+  "review_status": "needs_clarification",
+  "summary": "Таблица и пример ответа используют разные имена поля.",
+  "coverage": [
+    {
+      "source": "base",
+      "id": "l1",
+      "status": "analyzed",
+      "reason": null
+    },
+    {
+      "source": "base",
+      "id": "l2",
+      "status": "analyzed",
+      "reason": null
+    }
+  ],
+  "findings": [
+    {
+      "id": "lf1",
+      "category": "contract_mismatch",
+      "severity": "warning",
+      "assessment": "observed_inconsistency",
+      "title": "outputTypeCode и outputTypeId не согласованы",
+      "explanation": "Таблица задаёт outputTypeCode, а пример возвращает outputTypeId. Какое имя предусмотрено контрактом, из фрагмента не следует.",
+      "evidence": [
+        {
+          "source": "base",
+          "id": "l1",
+          "quote": "outputTypeCode"
+        },
+        {
+          "source": "base",
+          "id": "l2",
+          "quote": "outputTypeId"
+        }
+      ]
+    }
+  ],
+  "change_groups": [],
+  "questions": [
+    {
+      "id": "lq1",
+      "prompt": "В ответе должен возвращаться outputTypeId, outputTypeCode или оба поля?",
+      "reason": "Нельзя обоснованно выбрать правильное имя по двум расходящимся фрагментам.",
+      "evidence": [
+        {
+          "source": "base",
+          "id": "l1",
+          "quote": "outputTypeCode"
+        },
+        {
+          "source": "base",
+          "id": "l2",
+          "quote": "outputTypeId"
+        }
+      ]
+    }
+  ],
+  "change_outcomes": []
+}

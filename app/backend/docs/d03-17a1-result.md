@@ -1,0 +1,15 @@
+# D03-17A1 — точный текст DOCX и адреса подсветки
+
+1 ноября 2026, Sol 6.1 High. Реализован [контракт A1](d03-17a1-contract.md): новый pure пакет ara.docx_analysis с immutable DTO, build_snapshot и map_span. Подготовка проверяемой версии не обращается к БД/сети/секретам, не меняет package и не запускает ML.
+
+Snapshot содержит exact main-body paragraphs, включая короткие строки/заголовки/списки/физические и вложенные ячейки таблиц; пробелы/TAB/LF/Unicode сохраняются. IDs связываются с source SHA/part/path, snapshot digest — с документом/revision, текстом, адресами и coverage. DTO не удерживают original ZIP/DocxSource/projection. Map_span проверяет внутренние инварианты и digests, exact quote/code-point range, возвращает пересечения с исходными spans; не ищет похожую цитату. Repr/error не раскрывают текст документа.
+
+Opaque paragraphs/blocks и все notices явно блокируют полноту. A1 не выдаёт full DOCX analysis по main-body тексту. Literal U+FFFC не считается opaque, whitespace-only paragraphs учитываются отдельно. Budgets включительны и не обрезают данные; прежние package/projection limits остаются обязательными. Согласованность DTO не является криптографическим доказательством его соответствия package: будущий сервис сам строит snapshot из pinned bytes.
+
+Приёмка зафиксирована до source в **9239f0a**, после freeze не менялась. Red: **52 failed**, **0,37 секунды**, exit1 — новый пакет отсутствовал; `.runtime/d03-17a1-red.log`. После реализации frozen acceptance: **52 passed**, **0,18 секунды**. Итоговый targeted с дополнительными rehashed-malformed/coverage/anchor/Unicode cases и прежней projection приёмкой: **163 passed**, **0,50 секунды**, exit0; `.runtime/d03-17a1-targeted.log`.
+
+Rich synthetic fixture QA: источник **48126 bytes**, SHA256 `73009626640400679d2b1a2031c565a964308073aa287067cf39088836176fcd`. Все **26** included fragments восстановлены через реальные original spans, analysis_text1028 code points, coverage35. Complete=false из-за opaque paragraph и unprojected_part/story/unsupported_element; это правильный отказ от обещания полного покрытия. Bytes источника неизменны, нового DOCX/render/Word/ML запуска не было. `.runtime/d03-17a1-rich-qa.json`.
+
+Полный `bash scripts/check.sh`: **2370 passed + 24 subtests passed**, **76 warnings**, **290,50 секунды**, exit0; Ruff/format прошли. `.runtime/d03-17a1-full-check.log`. Source после gate не менялся. Baseline schemas/revisions/counts совпал целиком, ara_dev остаётся V8, ara_test пуста, temporary databases0. `.runtime/d03-17a1-final-runtime.json`. Старые sources/tests/contracts/БД/dependencies/runner/tasks/progress/архив/секреты не менялись. Чужие рабочие изменения сохранены. Локальный commit без push.
+
+Ограничения: main-body-v1 не читает дополнительные stories, tracked changes остаются opaque, нет очереди/worker/HTTP/результатов/фильтров/UI. Новые решения Никиты от 1 ноября — проверять итоговый текст правок Word и сохранять комментарии без анализа — относятся к следующему reader/policy циклу, не меняют frozen A1. Основной frontend ожидается от Ани, fixture не считается моделью.

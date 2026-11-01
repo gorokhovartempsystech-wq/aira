@@ -1,0 +1,21 @@
+# D03-16B1 — схема полного checkpoint DOCX
+
+31 октября 2026, после 45d831e, Sol 6.1 High, F05/F11/F12. Реализовать только миграцию 0009_docx_editor_checkpoints (parent 0008_docx_edit_drafts) и ORM DocxEditorCheckpoint согласно d03-16-design.md. Runtime storage/legacy arbitration/HTTP/DTO serialization остаются B2 и позже.
+
+Таблица docx_editor_checkpoints: document_id UUID PK/FK docx_documents.id, без CASCADE; checkpoint_revision BIGINT NOT NULL >0; format_version SMALLINT NOT NULL =1; phase TEXT NOT NULL empty/working/pending; nullable base_storage_revision BIGINT, base_sha256 TEXT, working_data BYTEA, working_sha256 TEXT, metadata JSONB, last_request_id UUID, last_request_sha256 TEXT; updated_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(). Revisions/phase/version не получают скрытых server defaults: операции должны задавать их явно. Python ORM attribute checkpoint_metadata отображает колонку metadata (Base.metadata зарезервирована SQLAlchemy).
+
+CHECKs: version/phase/revision допустимы; optional base revision >0 и hashes lowercase hex64; working_data 1…33554432 bytes при наличии; last_request_id/hash либо оба NULL, либо оба заполнены; metadata object и octet_length(metadata::text) ≤65536 при наличии. Будущий app слой дополнительно проверит канонический UTF-8 JSON ≤64 KiB, exact fields и package/hash/selection; SQL JSONB::text bound — отдельная защита размера, не обещание одинаковой сериализации.
+
+Phase shape: empty требует все base/working/metadata поля NULL (last_request может остаться tombstone); working/pending требуют все эти поля non-NULL. metadata обязательно содержит pending: JSON null для working, JSON object для pending. CHECK не должен пропускать отсутствующий key из-за SQL NULL/UNKNOWN. Остальные вложенные поля и digest matching — B2, не угадывать в SQL/не требовать pgcrypto.
+
+Empty revision сохраняется после discard будущего runtime. Downgrade: сначала ACCESS EXCLUSIVE lock таблицы, проверить отсутствие nonempty rows; если есть working/pending — RuntimeError без содержимого и без удаления rows/изменения alembic version. Если все rows empty/таблица пуста, drop разрешён. Это migration-only действие, не автоочистка пользовательских черновиков. Upgrade/repeat оставляют все прежние rows/constraints/schema неизменными. Свои рабочие ara_dev/ara_test автоматически не мигрировать; миграционные тесты только disposable PostgreSQL DB.
+
+## Пути и приёмка
+
+Source: src/ara/models.py (только import SmallInteger + новый класс), migrations/versions/0009_docx_editor_checkpoints.py. Freeze acceptance: tests/acceptance/test_docx_checkpoint_migrations.py и этот контракт. Дополнительные tests/docx_documents/test_checkpoint_schema_*.py. Результат docs/d03-16b1-result.md, queue update. Runner/tasks/progress/dependencies/скрипты/AGENTS/UI/HTTP/storage не менять.
+
+Одно техническое уточнение fixture прежней приёмки tests/acceptance/test_docx_recovery.py: только в test_additive_migration_preserves_previous_schema_and_rows два apply_migrations(empty_pg_engine) заменить на apply_migrations(empty_pg_engine,V8). Она уже требует exact V8, что несовместимо с moving head=V9; pin сохраняет ВСЕ прежние assertions/данные/upgrade-repeat-downgrade, как сделано в V6/V7 тестах. Это не разрешение удалить/ослабить старые проверки. Новая приёмка отдельно проверяет head=V9 и полную сохранность V8. Уточнение включено в данный новый цикл, A уже завершён.
+
+Acceptance: V8→V9→repeat→V8 с синтетическими непустыми legacy DOCX/draft/receipt и сравнением всех предыдущих rows/schema; exact column types/null/default/PK/FK/ORM match; реальные INSERT/UPDATE valid empty/working/pending/tombstone и invalid version/phase/size/hash/base/revision/pair/metadata/missing pending; duplicate PK/foreign document rejection; dirty downgrade отказ с сохранением rows/version, включая pending; clean downgrade→upgrade; no module I/O. Убедиться, что новый CHECK запрещает SQL UNKNOWN cases. Отдельный concurrent-writer downgrade test или lock assertion по фактической блокировке.
+
+Сначала frozen tests и red; реализация; targeted DB tests и старый V8 migration test; bash scripts/check.sh; baseline рабочих БД; report/local commit. Новых DOCX artifacts не создаётся, визуальный render не нужен. После B1 автоматически B2 на Sol 6.1 High с собственным ограниченным контрактом.
