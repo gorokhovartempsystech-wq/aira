@@ -198,7 +198,9 @@ def start_fixture_attempt(slot, identity, budget, *, request, execution_spec, mo
             lease_ns=budget.lease_ns,
             mode=mode,
         )
-        state = State(holder, binding, budget, frame, spec_sha, clock)
+        state = State(
+            holder, binding, budget, frame, spec_sha, clock, fixture=mode != "local_model"
+        )
         obj = WindowsAttempt(_KEY, state)
         _REGISTRY[id(obj)] = obj
     targets = {"launch": _launch_worker.run, "control": _control_writer.run, "data": _data_pump.run}

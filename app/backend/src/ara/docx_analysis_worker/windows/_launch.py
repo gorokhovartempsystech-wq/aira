@@ -58,6 +58,7 @@ class FixtureLaunch(LocalResource):
         self._stop_at = self._job = self._record = self._channels = None
         self._pairs, self._locals, self._signals = [], [], []
         self._close_failed = False
+        self._exited_at = None
         with _MUTEX:
             if _REGISTRY:
                 raise WindowsRuntimeError("runtime_busy")
@@ -211,7 +212,10 @@ class FixtureLaunch(LocalResource):
                     self._record.poll()
                     count = self._job.active_count()
                     if self._record.exited and count:
-                        self._h = True
+                        if self._exited_at is None:
+                            self._exited_at = now
+                        if now is None or now - self._exited_at >= 2_000_000_000:
+                            self._h = True
                     if (
                         self._h
                         or self._r

@@ -433,8 +433,8 @@ _FIELDS = {
 
 
 @_output
-def encode_projection(value):
-    if type(value) is not _models.EditorView:
+def encode_projection(value, *, compact=False):
+    if type(value) is not _models.EditorView or type(compact) is not bool:
         raise ValueError("Invalid editor projection")
     meta = _reply(value)
     p = value.editor.document.projection
@@ -457,8 +457,20 @@ def encode_projection(value):
         if names is None:
             raise ValueError("Unknown projection record")
         records += 1
-        if records > 5000:
+        if records > (20000 if compact else 5000):
             _large()
+        if compact and type(item) is projection.Paragraph:
+            names = tuple(name for name in names if name != "spans")
+            result = {name: wire(getattr(item, name), depth + 1) for name in names}
+            records += len(item.spans)
+            if records > 20000:
+                _large()
+            # Exact edit coordinates without duplicating text, hashes and run metadata.
+            result["edit_spans"] = [
+                dict(kind=s.kind, path=list(s.anchor.path), start=s.start, end=s.end)
+                for s in item.spans
+            ]
+            return result
         return {name: wire(getattr(item, name), depth + 1) for name in names}
 
     payload = dict(

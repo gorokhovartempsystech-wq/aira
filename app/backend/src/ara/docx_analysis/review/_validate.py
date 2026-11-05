@@ -41,7 +41,21 @@ def validate_reply(
     limits = checked(provenance, limits)
     check_prepared(request, limits)
     raw = decode(reply, limits)
+    require(type(raw) is dict)
+    extension = raw.get("extensions")
+    if "extensions" in raw:
+        require(
+            base_factory(snapshot, provenance, "review_result")["schema_version"] == "docx-review/5"
+        )
+        from ara.docx_analysis.word_review._extensions import parse
+
+        coverage, independent, extra_requests = parse(extension, snapshot, limits)
+        raw = {k: v for k, v in raw.items() if k != "extensions"}
+    else:
+        extra_requests = ()
     issues, requests = parse_reply(raw, provenance, limits)
+    issue_request_count = len(requests)
+    requests += extra_requests
     try:
         mapped = mapper(data, snapshot, requests=requests, limits=limits.view)
     except VisibleViewError as exc:
@@ -131,7 +145,15 @@ def validate_reply(
         no_findings=no_findings,
         private_provenance=tuple(private),
     )
+    if extension is not None:
+        from ara.docx_analysis.word_review._extensions import attach
+
+        attach(common, coverage, independent, mapped[issue_request_count:], snapshot, limits)
     wire = encode(common, limits.max_wire_bytes)
     return ReviewEnvelope(
-        wire, sha256(wire).hexdigest(), len(findings), len(questions), no_findings
+        wire,
+        sha256(wire).hexdigest(),
+        len(findings),
+        common["counts"]["questions"],
+        common["no_findings"],
     )

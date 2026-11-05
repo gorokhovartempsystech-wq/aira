@@ -92,7 +92,9 @@ class Service:
             if self._entries.get((document_id, key)) is entry:
                 self._entries.move_to_end((document_id, key))
         view = self.supervisor.ticket_view(ticket) if ticket else None
-        return _wire.receipt(document_id, key, view, stopped=stopped)
+        return _wire.receipt(
+            document_id, key, view, stopped=stopped, fixture=self.supervisor.view().fixture
+        )
 
     def admit(self, key, command):
         document_id = command.document_id

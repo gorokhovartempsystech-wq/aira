@@ -1,7 +1,7 @@
 """Deferred explicit installation of the editor JSON transport."""
 
 
-def install_editor_json(app, runtime, *, table_editor=False):
+def install_editor_json(app, runtime, *, table_editor=False, field_editor=False):
     from typing import Annotated
     from uuid import UUID
 
@@ -17,18 +17,20 @@ def install_editor_json(app, runtime, *, table_editor=False):
     from ._http_schema import extra, install_schema
     from ._http_transport import EditorTransport, load_json, read_body
 
-    if type(table_editor) is not bool:
+    if type(table_editor) is not bool or type(field_editor) is not bool:
         raise ConfigurationError("Invalid editor policy")
     if hasattr(app.state, "docx_editor_registry"):
         raise ConfigurationError("Editor transport is already installed")
-    registry = EditorRegistry(scoped_runtime(runtime), table_editor=table_editor)
+    registry = EditorRegistry(
+        scoped_runtime(runtime), table_editor=table_editor, field_editor=field_editor
+    )
     app.state.docx_editor_registry = registry
     app.add_middleware(EditorTransport)
     path_uuid = Annotated[
         UUID, BeforeValidator(wire._uuid), WithJsonSchema(dict(type="string", format="uuid"))
     ]
 
-    def perform(operation, document_id, session_id=None, data=None):
+    def perform(operation, document_id, session_id=None, data=None, compact=False):
         from ara.documents.storage import DocumentError
 
         try:
@@ -40,7 +42,7 @@ def install_editor_json(app, runtime, *, table_editor=False):
             elif operation in ("metadata", "view"):
                 result = registry.snapshot(document_id=document_id, session_id=session_id)
                 if operation == "view":
-                    return wire.encode_projection(result)
+                    return wire.encode_projection(result, compact=compact)
             elif operation == "commands":
                 result = registry.command(
                     document_id=document_id, session_id=session_id, **wire.decode_command(body)
@@ -63,7 +65,9 @@ def install_editor_json(app, runtime, *, table_editor=False):
         except Exception:
             raise DocumentError(500, "editor_error", "Editor operation failed") from None
 
-    async def dispatch(request, operation, document_id, session_id=None, *, post=False):
+    async def dispatch(
+        request, operation, document_id, session_id=None, *, post=False, compact=False
+    ):
         data = await read_body(
             request,
             8 * 1024 * 1024 if operation == "commands" else 65536 if post else 0,
@@ -71,7 +75,7 @@ def install_editor_json(app, runtime, *, table_editor=False):
         )
         with anyio.CancelScope(shield=True):
             encoded = await run_in_threadpool(
-                perform, operation, document_id, session_id, data if post else None
+                perform, operation, document_id, session_id, data if post else None, compact
             )
         return Response(
             encoded, media_type="application/json", headers={"Cache-Control": "no-store"}
@@ -97,6 +101,10 @@ def install_editor_json(app, runtime, *, table_editor=False):
     @router.get(base + "/view", openapi_extra=extra(response="Projection"))
     async def view(document_id: path_uuid, session_id: path_uuid, request: Request):
         return await dispatch(request, "view", document_id, session_id)
+
+    @router.get(base + "/compact-view")
+    async def compact_view(document_id: path_uuid, session_id: path_uuid, request: Request):
+        return await dispatch(request, "view", document_id, session_id, compact=True)
 
     def control_handler(operation):
         async def handler(document_id: path_uuid, session_id: path_uuid, request: Request):

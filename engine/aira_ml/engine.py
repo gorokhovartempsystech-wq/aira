@@ -36,6 +36,7 @@ import onnxruntime as ort
 from tokenizers import Tokenizer
 
 from .lint import lint
+from .stable_nli import StableNli
 
 VERSION = "0.1.0"
 STATUS_RU = {"active": "действует", "exception": "исключение", "deprecated": "архив",
@@ -151,7 +152,7 @@ class Engine:
         t = time.time()
         self.emb = Onnx(self.dir / "embedder", threads)
         self.pair = Onnx(self.dir / "pair", threads)
-        self.nli = Onnx(self.dir / "nli", threads)
+        self.nli = StableNli(Onnx(self.dir / "nli", threads))
         self.pair_labels, self.pair_t = m["pair"]["labels"], m["pair"].get("temperature", 1.0)
         self.nli_labels = m["nli"]["labels"]
         self.load_s = round(time.time() - t, 2)

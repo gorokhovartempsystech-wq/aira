@@ -22,3 +22,6 @@ class WindowsPlatform(_NativePlatform):
     @staticmethod
     def _physical(view):
         return bool(view.cleanup_confirmed)
+
+    def acquire_owner(self, root):
+        return super().acquire_owner(str(root))

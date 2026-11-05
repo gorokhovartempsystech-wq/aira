@@ -27,9 +27,14 @@ class ProjectionLimits:
 
     max_nodes: int = 100000
     max_depth: int = 128
+    isolate_complex_fields: bool = False
 
     def __post_init__(self) -> None:
+        if type(self.isolate_complex_fields) is not bool:
+            raise ProjectionError("invalid_input")
         for item in fields(self):
+            if item.name == "isolate_complex_fields":
+                continue
             value = getattr(self, item.name)
             if type(value) is not int or value <= 0:
                 raise ProjectionError("invalid_input")

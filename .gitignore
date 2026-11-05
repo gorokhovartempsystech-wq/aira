@@ -36,3 +36,9 @@ engine/data/external/
 engine/data/spaces/gen5/
 engine/data/spaces/gen5_raw/
 engine/data/train/nli_real_neg.jsonl
+
+# Installer-owned runtime and model weights
+/app/backend/ml_bundle/
+
+# Local reused test environment
+/app/backend/.venv

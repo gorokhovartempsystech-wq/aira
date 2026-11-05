@@ -144,11 +144,13 @@ def present(
             origins = [identity for identity in question["finding_ids"] if identity in visible_ids]
             if origins:
                 questions.append(dict(question, visible_finding_ids=origins))
+    standalone = body.get("standalone_questions", []) if show_questions else []
+    visible_question_count = len(questions) + len(standalone)
     counts = dict(
         total_findings=body["counts"]["findings"],
         total_questions=body["counts"]["questions"],
         visible_findings=len(findings),
-        visible_questions=len(questions),
+        visible_questions=visible_question_count,
         hidden_findings=len(hidden_ids),
         filtered_findings=sum(finding["type"] in disabled for finding in body["findings"]),
     )
@@ -180,6 +182,13 @@ def present(
         view.update(schema_version="docx-review-view/4", document_context=body["document_context"])
     elif body["schema_version"] == "docx-review/5":
         view.update(schema_version="docx-review-view/5", document_context=body["document_context"])
+    if body["schema_version"] == "docx-review/6-draft-1":
+        view.update(
+            schema_version="docx-review-view/6-draft-1",
+            document_context=body["document_context"],
+            analysis_coverage=body["analysis_coverage"],
+            standalone_questions=standalone,
+        )
     raw = _encode(view)
     return Presentation(
         raw,
@@ -187,7 +196,7 @@ def present(
         counts["total_findings"],
         len(findings),
         len(hidden_ids),
-        len(questions),
+        visible_question_count,
         body["no_findings"],
         not findings,
     )

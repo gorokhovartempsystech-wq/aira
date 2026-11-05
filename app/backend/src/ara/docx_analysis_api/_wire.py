@@ -81,7 +81,7 @@ def run(summary, error_code):
     return data
 
 
-def receipt(document_id, key, view=None, *, stopped=False):
+def receipt(document_id, key, view=None, *, stopped=False, fixture=True):
     return dict(
         schema_version=VERSION,
         document_id=str(document_id),
@@ -94,7 +94,7 @@ def receipt(document_id, key, view=None, *, stopped=False):
         if view and view.sql_state
         else None,
         error_code=view.error_code if view else None,
-        fixture=True,
+        fixture=fixture,
     )
 
 

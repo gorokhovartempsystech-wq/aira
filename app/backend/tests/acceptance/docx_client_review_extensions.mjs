@@ -1,0 +1,12 @@
+import assert from 'node:assert/strict';import {pathToFileURL} from 'node:url';
+const root=process.argv[2];const {extendedReview}=await import(pathToFileURL(root+'/src/ara/desktop/client/review-extensions.mjs'));
+const base=()=>({schema_version:'docx-review-view/6-draft-1',analysis_coverage:{state:'complete',reason:null,planned_checks:['formulation'],completed_checks:['formulation'],pair_selection:'none',pair_candidates_total:0,pair_candidates_completed:0},standalone_questions:[],questions:[],counts:{total_findings:0,total_questions:0,visible_questions:0},no_findings:true});
+assert.equal(extendedReview(base()).partial,false);
+let p=base();p.analysis_coverage.state='partial';p.analysis_coverage.reason='deadline';p.analysis_coverage.completed_checks=[];p.no_findings=false;assert.equal(extendedReview(p).partial,true);
+p.no_findings=true;assert.throws(()=>extendedReview(p));
+p=base();p.analysis_coverage.completed_checks=[];assert.throws(()=>extendedReview(p));
+p=base();p.analysis_coverage.pair_candidates_completed=1;assert.throws(()=>extendedReview(p));
+p=base();p.standalone_questions=[{question_id:'sq-'+'a'.repeat(64),text:'Уточните',reason:'Недостаточно контекста',evidence:[{fragment_id:'f1',start:0,end:2,quote:'Я😀',slices:[{}]}]}];p.counts.total_questions=1;p.counts.visible_questions=1;p.no_findings=false;assert.equal(extendedReview(p).partial,false);
+p.standalone_questions[0].evidence[0].end=3;assert.throws(()=>extendedReview(p));
+assert.equal(extendedReview({schema_version:'docx-review-view/5'}),null);
+console.log('ok extensions');

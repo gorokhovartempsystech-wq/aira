@@ -34,7 +34,12 @@ def points(selection, document):
 
 def verify_metadata(data, *, saved_sha256, selection):
     # Independent original-package proof, not trust in a persisted anchor/hash.
+    from ..projection import ProjectionLimits
     from ..session import DocxSession
 
-    document = DocxSession.restore(data, saved_sha256=saved_sha256).snapshot()
+    document = DocxSession.restore(
+        data,
+        saved_sha256=saved_sha256,
+        projection_limits=ProjectionLimits(isolate_complex_fields=True),
+    ).snapshot()
     points(selection, document)

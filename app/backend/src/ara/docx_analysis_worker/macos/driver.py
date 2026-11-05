@@ -108,7 +108,9 @@ def start_fixture_attempt(slot, identity, budget, *, request, execution_spec, mo
     )
     try:
         control = ControlPipe(holder, binding, budget, clock)
-        pump = DataPump(holder, control, binding, spec_sha, frame, clock)
+        pump = DataPump(
+            holder, control, binding, spec_sha, frame, clock, fixture=mode != "local_model"
+        )
         result = MacAttempt(_ISSUE, pump)
         pump.thread.start()
         return result

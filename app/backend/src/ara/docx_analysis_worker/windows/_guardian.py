@@ -266,8 +266,11 @@ def run(api, inherited, binding, deadline, lease, mode):
                 if not go and not state.stopped:
                     state.stop(True)
                 if job.active_count() != 0:
-                    state.stop(True)
-                    child.terminate()
+                    # Process signalling can precede Job accounting becoming empty.
+                    # Keep withholding the cleanup acknowledgement during this bounded wait.
+                    if now - exited_at >= 2_000_000_000:
+                        state.stop(True)
+                        child.terminate()
                 elif diagnostics.eof:
                     break
                 if now - exited_at >= 2_000_000_000:

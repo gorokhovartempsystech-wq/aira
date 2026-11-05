@@ -99,7 +99,7 @@ def test_unknown_and_malformed_profiles_are_distinct():
     )
 
 
-@pytest.mark.parametrize("count", [512, 513])
+@pytest.mark.parametrize("count", [512, 513, 1024, 1025])
 def test_initial_server_fragment_admission_is_not_generic_b1_capacity(count):
     raw, _ = source("<w:p><w:r><w:t>Short</w:t></w:r></w:p>" * count)
     s = build(raw)
@@ -107,7 +107,7 @@ def test_initial_server_fragment_admission_is_not_generic_b1_capacity(count):
     def call():
         return api().capture_source(raw, s, command=command(s), execution=execution())
 
-    if count == 512:
+    if count <= 1024:
         assert api().restore_source(call()).snapshot == s
     else:
         reject("codec_limit_exceeded", call)

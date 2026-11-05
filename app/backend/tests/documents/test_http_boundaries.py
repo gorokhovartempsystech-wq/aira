@@ -89,6 +89,7 @@ def test_explicit_runtime_keeps_health_and_openapi_inert(isolated_client):
         "/docx-documents/{document_id}/editor-sessions",
         "/docx-documents/{document_id}/editor-sessions/{session_id}",
         "/docx-documents/{document_id}/editor-sessions/{session_id}/view",
+        "/docx-documents/{document_id}/editor-sessions/{session_id}/compact-view",
         "/docx-documents/{document_id}/editor-sessions/{session_id}/commands",
         "/docx-documents/{document_id}/editor-sessions/{session_id}/checkpoint",
         "/docx-documents/{document_id}/editor-sessions/{session_id}/save",

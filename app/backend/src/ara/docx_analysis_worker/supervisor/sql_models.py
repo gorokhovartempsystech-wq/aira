@@ -56,6 +56,7 @@ class ClaimReceipt:
     claim: WorkerClaim | None
     state: RunState
     replayed: bool = False
+    budget_started_ns: int | None = None
 
 
 @dataclass(frozen=True, slots=True)

@@ -29,4 +29,4 @@ def project_docx(
     root = parse_main(
         data, source, limits if limits is not None else DocxLimits(), projection_limits
     )
-    return project_main(source, root)
+    return project_main(source, root, isolate_fields=projection_limits.isolate_complex_fields)

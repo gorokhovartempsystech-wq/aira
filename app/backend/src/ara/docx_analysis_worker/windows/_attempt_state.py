@@ -6,7 +6,8 @@ from ._driver_models import AttemptView
 
 
 class State:
-    def __init__(self, holder, binding, budget, frame, spec_sha, clock):
+    def __init__(self, holder, binding, budget, frame, spec_sha, clock, *, fixture=True):
+        self.fixture = fixture
         self.holder, self.binding, self.clock = holder, binding, clock
         self.deadline, self.lease, self.watermark = (
             budget.deadline_ns,
@@ -143,6 +144,7 @@ class State:
                 self.candidate_locked(),
                 self.permit_ready,
                 self.resources_closed,
+                self.fixture,
             )
 
 

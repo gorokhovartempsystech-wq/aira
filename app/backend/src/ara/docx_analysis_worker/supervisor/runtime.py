@@ -117,7 +117,7 @@ class Supervisor(Uncopyable):
             queued = sum(e is not self._active for e in self._entries.values())
             return SupervisorView(
                 self._phase,
-                True,
+                self._execution.execution_kind == "fixture",
                 self._error,
                 queued,
                 self._active.run_id if self._active else None,
@@ -268,6 +268,7 @@ def _create_supervisor(
     execution,
     platform,
     source_profile=PROFILE,
+    execution_kind="fixture",
 ):
     from ara.desktop.database import DatabaseError, DesktopDatabaseSettings
 
@@ -278,7 +279,8 @@ def _create_supervisor(
         or not root.is_absolute()
         or ".." in root.parts
         or type(execution) is not ExecutionSpec
-        or execution.execution_kind != "fixture"
+        or execution_kind not in ("fixture", "local_model")
+        or execution.execution_kind != execution_kind
         or type(source_profile) is not str
         or source_profile
         not in (PROFILE, LIST_PROFILE, OUTLINE_PROFILE, STYLE_LIST_PROFILE, WORD_PROFILE)
