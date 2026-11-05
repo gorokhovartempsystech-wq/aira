@@ -1,0 +1,25 @@
+{
+  "contract_version": "0.1.0",
+  "run_id": "run_demo_lint",
+  "mode": "lint",
+  "base_document": {
+    "document_id": "doc_contract_demo",
+    "version_id": "version_lint_1",
+    "blocks": [
+      {
+        "id": "l1",
+        "kind": "table",
+        "text": "| Поле | Тип |\n|---|---|\n| outputTypeCode | Integer |"
+      },
+      {
+        "id": "l2",
+        "kind": "code",
+        "text": "```json\n{\"outputTypeId\": 1}\n```"
+      }
+    ]
+  },
+  "context": {
+    "revision_id": "context_lint_1",
+    "items": []
+  }
+}

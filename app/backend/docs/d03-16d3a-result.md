@@ -1,0 +1,17 @@
+# D03-16D3A — checkpoint attempts и безопасное закрытие
+
+31 октября 2026, Sol 6.1 High, F05/F11/F12. Реализован d03-16d3a-contract.md: checkpoint, clean save, reconcile local attempt и close. Immutable attempt/SaveTarget с полным PUT proof публикуется до первого durable dispatch, editor/sequence/latest остаются прежними. Unknown outcome блокирует новые команды; retry/reconcile повторяет тот же payload/request ID и подтверждает full checkpoint identity, не равенство bytes.
+
+Candidate/reply/read transaction готовятся до dispatch, PUT работает без outer SQL locks. После подтверждения и matching current/base одна RAM publication меняет CP/sequence/latest и снимает active; история/selection/saved digest остаются. Dirty checkpoint не выдаётся за current save. Native dirty save до D3B явно отклоняется без side effects. Ошибка подготовки ответа после SQL commit сохраняет attempt для повтора.
+
+Default close подтверждает working checkpoint и затем удаляет actor/open mapping/retained packages. Explicit release_local не пишет/не очищает БД, требует отдельного command intent и работает при conflict/pending/MAX; ничего не утверждает о rollback. Проверка регистрации actor после mutex/scope не позволяет ожидавшим snapshot/open/command/checkpoint вернуть уже закрытую сессию. Foreign legacy/empty fence не блокирует спасение local snapshot: quick scope observation возвращает conflict, full own PUT proof читается отдельно без nested transaction.
+
+Freeze **53baf01**, red **10 failed**, **2,33 секунды**, нужных methods не было. Frozen acceptance после freeze не менялась. Targeted **86 passed**, 2 предупреждения, **17,23 секунды**: 10 frozen controls, 11 дополнительных control edges и 65 D1/D2 checks. Проверены before/after PUT commit ACK-loss, DTO failure after commit, active до dispatch, UUID/payload стабильность, другой документ при pending, wrong/superseded identities, descriptor isolation, чужой head/CP/legacy, MAX, close reply failure и четыре гонки stale actor с close. Дополнительный тестовый mutex изначально был одноразовым context manager; до фиксации own tests заменён на повторно используемый gate, production assertions/frozen tests не ослаблялись.
+
+Полный `bash scripts/check.sh`: **2172 passed + 24 subtests passed**, 72 предупреждения, **218,32 секунды**, exit 0. Ruff/format прошли; production source после gate не менялся. Логи .runtime/d03-16d3a-red.log, d03-16d3a-targeted.log, d03-16d3a-full-check.log.
+
+Disposable rich DOCX QA: native edit/history→checkpoint→latest/reconcile replay→close→новый registry recover. Working bytes exact прежнему visual reference, 48211 bytes, SHA256 `1239ac34f1e975cc56e97698acfab2f747d75e1b97f759b3794f00db66114529`; selection exact, restored dirty/core0/history0. Close освободил actor и retained references; working CP3, original/current/storage revision1 прежние, SQL receipts0. .runtime/d03-16d3a-qa.json, собственная DB удалена. Hash-proof reuse ранее просмотренного reference, нового render/Word запуска нет.
+
+Ограничения: dirty current save/recovered pending reconciliation/SavedTarget предстоят в D3B. HTTP/таймер/UI/Word и Windows/macOS gate отдельно. Прежние B/C/native/schema/API/dependencies/runner/tasks/progress и frozen tests не менялись, рабочая V8 автоматически не мигрировалась. Продолжать D3B на Sol 6.1 High после завершения gate/result/local commit.
+
+Baseline схем/ревизий/счётчиков рабочих баз совпал целиком, ara_test пуста, временных ara_check_* нет. Архив/секреты/чужие изменения не затронуты. Локальный commit без push; PostgreSQL оставлен для следующего цикла.

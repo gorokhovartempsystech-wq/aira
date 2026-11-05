@@ -1,0 +1,13 @@
+# D03-16C1 — immutable prepare-save
+
+31 октября 2026, Sol 6.1 High. Выполнен d03-16c1-contract.md: prepare_save атомарно сохраняет pending bytes/selection/base/origin/operation ID, не меняя current/original/receipts. Exact prepare replay, altered/superseded/другой pending, old receipt collision, fresh MAX, scope/base conflicts и DTO rollback проверены. Lost ACK повторяет те же identity и bytes, не редактирует документ повторно.
+
+SaveHandle содержит полный canonical fingerprint payload без working bytes; свойства operation_id/request_sha256 из metadata.pending. Payload можно перепроверить после очистки checkpoint, включая изменение prepared/base revision, size, origin и удаление frozen fields. Это уточнение минимального handle в дизайне необходимо для строгого старого replay при отсутствии прежней pending строки. PreparedSave.handle и snapshot не разделяют mutable metadata/anchors. Старые put/discard fingerprint результаты не изменились; pending helper делегирует общей save_identity_fingerprint.
+
+Freeze **a3229d0**, red **7 failed**, 1,68 секунды — новый prepare модуль отсутствовал. Frozen acceptance после freeze не менялась. Targeted **36 passed**, 7,96 секунды, 2 предупреждения — 7 prepare acceptance, 7 checkpoint acceptance, 9 дополнительных prepare и 13 прежних checkpoint storage edges. Проверены lost ACK до/после commit, MAX/checkpoint/storage, replay с новым current head, identity после удаления checkpoint и mutated/deleted frozen input, отсутствие side effects при import новых модулей, восстановление pending/proof отдельным процессом.
+
+Полный `bash scripts/check.sh`: **2028 passed, 24 subtests passed**, 69 предупреждений, **189,52 секунды**, exit 0. Ruff/format прошли. Source после gate не менялся. Логи .runtime/d03-16c1-red.log, d03-16c1-targeted.log, d03-16c1-full-check.log.
+
+Baseline схемы/ревизии/счётчиков рабочих баз совпал, ara_test пуста, временных ara_check_* нет. Рабочие базы автоматически не мигрировались; V9/новые pending writes проверялись в disposable PostgreSQL. DOCX artifacts/render не требуются: Word current не меняется, exact candidate bytes проверены в pending и после отдельного process restart. Секреты/архив/чужие изменения/API/БД schema/старые tests/dependencies/runner/tasks/progress не затронуты; local commit без push. PostgreSQL оставлен для следующего цикла.
+
+Ограничение: prepared pending ещё не подтверждает сохранение current. Следующий C2 — атомарный current update + receipt и старый replay без изменения более нового current/черновика. Затем C3 finalize/discard_pending/reconcile. Режим остаётся Sol 6.1 High, продолжать автоматически.

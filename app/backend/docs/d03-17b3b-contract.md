@@ -1,0 +1,45 @@
+# D03-17B3B — fenced worker lifecycle и публикация результата
+
+1 ноября 2026, Sol6.1 High, после B3A c45aad5. F06–F08/F12; B2 design/state matrix и current-product-scope обязательны. Реализовать только SQL lifecycle с fixture reply через готовый B2B. **Без** child/model/HTTP/UI/новой миграции или запуска основной БД upgrade. Process ownership/local Stop latch остаются C1; SQL не доказывает остановку child.
+
+Allowed: новые `src/ara/docx_analysis_runs/lifecycle*.py`, новый `src/ara/docx_analysis_runs/_lifecycle*.py`, добавление exports в __init__; существующие B3A modules не менять. Новая frozen `tests/acceptance/test_docx_analysis_lifecycle.py`, собственные `tests/docx_documents/test_analysis_lifecycle_*.py`. Этот контракт/acceptance freeze до implementation, report/queue после полного gate. B1/B2/DDL/старые tests/runner/dependencies неизменны.
+
+## API / records
+
+- `claim_next(engine,*,worker_instance_id:UUID,limits:CodecLimits|None=None)->WorkerClaim|None`.
+- `heartbeat(engine,claim:WorkerClaim,*,stage:str|None=None)->WorkerUpdate`.
+- `complete_attempt(engine,claim,*,reply:bytes,limits=None)->WorkerUpdate`.
+- `fail_attempt(engine,claim,*,error_code:str)->WorkerUpdate`.
+- `cancel_run(runtime,*,document_id:UUID,run_id:UUID)->RunState`.
+- `acknowledge_cancel(engine,claim)->WorkerUpdate` — trusted supervisor вызывает только после подтверждённого выхода owned child. Сам этот слой процессов не создаёт/не убивает.
+- `reap_expired(engine,*,limit:int=32)->tuple[RunState,...]`.
+- `read_state(runtime,*,document_id,run_id)->RunState` — scoped read с материализацией истечения, не единственный таймер.
+- `reconcile_attempt(engine,claim,*,expected_result_sha256:str,limits=None)->WorkerUpdate` — проверяет опубликованный result через B2B, не inference.
+
+DTO frozen/slotted. `RunState(summary:RunSummary,attempt_id:UUID|None,fence:int,error_code:str|None,lease_expires_at:datetime|None,cancel_requested_at:datetime|None)`. `WorkerUpdate(accepted:bool,state:RunState,replayed:bool=False)`. `WorkerClaim(run_id:UUID,document_id:UUID,attempt_id:UUID,worker_instance_id:UUID,claim_fence:int,source:SourceBundle,attempt:AttemptBundle,claimed_at:datetime,deadline_at:datetime,lease_expires_at:datetime)`; source/attempt repr=False. Claim поля revalidate exact UUID/fence1/time; DTO bytes не proof: complete/reconcile восстанавливают **DB source/request**, не доверяют подменённым claim buffers. Engine/worker functions — trusted internal backend, не публичные HTTP возможности. Engine caller-owned, secret/config/network I/O не добавлять.
+
+## Lock / time / states
+
+Во всех изменяющих операциях **current project SHARE →document UPDATE→run UPDATE→attempt UPDATE**. Предварительный nonlocking document.project lookup только для выбора project lock; под document lock проверить project снова, при смене bounded retry/без мутации. Нельзя начинать с run FOR UPDATE. Worker/reaper могут завершить run после смены owner/project; проверяют current against accepted pin и ставят failed/ownership_changed, а не передают исполнение другому owner. Scoped user cancel/read сначала авторизуют current owner, foreign404. Не читать BYTEA в heartbeat/reaper/metadata path (ORM load_only/raiseload допустим). Full codec/source/reply validation вне row locks; final gate повторяет source/request byte identity, token/owner/lease/deadline под locks.
+
+Срок exactly created+300s без reset. Свежий clock_timestamp после locks перед решением. Terminal state не меняется. Порядок materialization nonterminal: deadline reached→timed_out/deadline_exceeded; current scope pin mismatch→failed/ownership_changed; clock<created/heartbeat→failed/interrupted; lease expired running→failed/interrupted, cancel_requested→cancelled. Time clamp для конечного timestamp≥created, не продление budget. Lease equality expired. До claim terminal fence1, после claim fence2; lease очищается; attempt/source/results не удалять.
+
+Claim: nonlocking bounded candidates queued order(created_at,id),<=16 за вызов; materialize expired/mismatched candidates, затем подготовить DB source+B2B request с новым attempt UUID **вне locks**. Fresh owned source берётся по accepted context. Validation failure не создаёт attempt: queued→failed source_corrupt/analysis_limit_exceeded. Final lock recheck queued/owner/source pin/deadline, compare exact buffers, insert immutable attempt(worker UUID,claim_fence1,request bytes/hash), set run running/fence1/pointer/started/heartbeat=DBnow/lease=min(now+15,deadline)/stage preparing_document одной transaction. Concurrent loser не создаёт attempt/child. Lease/request claim только после commit. Нет автоматического второго claim того же run; retry — B3A новый run.
+
+Heartbeat: token run/document/attempt/worker/fence1 сверяется с DB attempt; только running+run fence1 и **предыдущая lease>now**. New lease=min(now+15,deadline),≤15sec; heartbeat не оживляет expired lease. Stage только preparing_document/loading_model/analyzing/validating_result/finishing; известный устаревший stage не регрессирует, None сохраняет. Не рисовать проценты/лексика. Accepted только после commit. Неверный/устаревший token не меняет чужое state и не сообщает success.
+
+Cancel queued→cancelled/fence1/cancel timestamp/finished; running→cancel_requested/fence2 и cancel timestamp, старая lease сохраняется без heartbeat prolongation. Повтор cancel возвращает фактический state. Late output/heartbeat при fence2 отвергаются. acknowledge_cancel с matching original attempt/worker/fence1 при cancel_requested завершает cancelled/fence2; deadline/owner expiry прежде имеют приоритет. Terminal result не переписывать. Local cancel latch/terminate при DB unavailable — C1, не притворяться реализованным здесь.
+
+Complete: сначала inspect/materialize и token gate. Вне locks получить scoped DB SourceBundle+AttemptBundle; B2B capture_result/restore proof. Stored input corruption→failed/source_corrupt; malformed reply→failed/invalid_result; technical bounds→failed/analysis_limit_exceeded. Final lock recheck eligibility, fresh clock, same source/manifest/command/execution/request bytes/digests и token. Insert result+set succeeded/fence2/finished/clear lease одной transaction, force deferred constraints перед ACK; fixture no_findings=false. Никаких строк результата при отказе/тайм-ауте/cancel и никаких изменений предыдущих успешных runs.
+
+Повтор complete уже succeeded: matching original attempt/worker и **тот же exact raw reply** может подтвердить replay только после B2B restore stored result и digest checks; другой reply не overwrite. terminal failure/cancel/timeout accepted=false. Unknown commit→503 storage_unavailable, caller повторяет/reconciles без нового inference. Reconcile expected SHA exact lowerhex64, read/validate existing result/source/request через B2B и сравнить SHA; false если ещё нет/не тот result, corruption500 без уничтожения уже succeeded. Returned accepted/replayed только после подтверждённого transaction/read.
+
+fail_attempt принимает только model_unavailable/model_input_limit_exceeded/invalid_result/adapter_error/analysis_limit_exceeded/source_corrupt; произвольный error text не хранится. Token/lease/deadline gate такой же, failed/fence2/error/finished атомарно; stale false. Errors пользуются DocumentError: invalid caller input422 validation_error, foreign scoped read404, known operational/commit faults503 storage_unavailable retryable, stored corruption500 storage_error. Messages static без reply/model/source/SQL details. Не swallow BaseException.
+
+Reaper bounded limit1..128, отдельная transaction/run по тому же lock order; deadline/ownership/lease rules, никакой перезапуск queued из running. Работает без открытого UI; scheduler C1/desktop вызовет явно. Read_state применяет те же rules дополнительно; старый B3A get_run остаётся raw metadata. Latest result не удаляется при новой ошибке; UI result API — D.
+
+## Приёмка
+
+Freeze/red до source. Disposable PostgreSQL: single claim/concurrent claim и immutable source/request; heartbeat(stage/lease), exact token/fence/worker substitution; deadline300 includes queue/prep/validation, lease expiry/reaper/no restart; cancel queued/running/ack/deadline races, late output zero result; valid fixture publication atomic/deferred pairs and same-reply replay; invalid quote/reply/corrupt source не превращаются в empty success; ownership transfer; unknown commit and reconcile; reader/reply validation вне locks, final binding recheck; heartbeat/reaper metadata-only queries; process import inertness/no model. Controlled DB clock seam вместо ожидания5min; runtime baseline и full scripts/check.sh. Отдельная native Word/real ML проверка не требуется: source не меняется, replies synthetic.
+
+После B3B остановиться на завершённом gate для **Astra6 High: C1 design**. Требуется выбрать и проверить process-ownership/lifetime/parent-death примитивы Windows/macOS, exact IPC/supervisor API/monotonic deadlines/Stop latch. В D03-17 это намеренно оставлено C1, SQL lifecycle не даёт такого решения автоматически. После C1 проекта реализация снова Sol6.1 High.

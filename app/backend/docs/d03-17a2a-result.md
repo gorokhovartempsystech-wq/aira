@@ -1,0 +1,23 @@
+# D03-17A2a — полный inventory пакета и policy чтения Word
+
+1 ноября 2026, Sol 6.1 High. После A1 `9ea40c5` реализован [узкий контракт](d03-17a2a-contract.md): inventory_docx и immutable metadata DTO в ara.docx_analysis.inventory; __init__ добавляет только exports. Все non-directory package parts/relationships учитываются в стабильном порядке, включая orphan и неизвестные. Main определяется validated OPC relationship, остальные категории — по exact MIME, не имени файла.
+
+Прямые ответы Никиты в этом цикле записаны в current-product-scope.md: при анализе читать итоговый текст отслеживаемых правок (добавленное включать, удалённое пропускать), исходный файл не менять; Word comments сохранять без проверки как требований. AnalysisPolicy фиксирует эти значения. Inventory не применяет правки/не извлекает новые stories/не меняет A1 snapshot и не имеет complete/ready флага. Изображения требуют отдельного учёта media/text, неизвестные parts — reader; классификация MIME не доказывает покрытие вложенного текста.
+
+Output не удерживает ZIP/XML/DocxSource или raw target URLs. External links остаются инертными, внутренние разрешает прежний package validator. Arbitrary metadata скрыта из repr. Импорт/API не читают env/секреты/пользовательские файлы, не обращаются к сети/БД, не запускают upstream/ML. Inclusive limits проверяются до новых output collections; прежние package budgets действуют, это не streaming admission перед выполнением package reader.
+
+Policy/контракт/приёмка freeze **fd76d9a** до source. Red **35 failed**, **0,21 секунды**, exit1: inventory API отсутствовал; `.runtime/d03-17a2a-red.log`. Frozen acceptance после реализации и собственные metadata/limits/package/compatibility edges вместе с A1: **109 passed**, **0,27 секунды**, exit0; `.runtime/d03-17a2a-targeted.log`. Frozen и все старые tests не менялись.
+
+Rich synthetic fixture QA: **20 parts**, **17 relationships** (16 Internal/1 External), source48126 bytes, SHA256 `73009626640400679d2b1a2031c565a964308073aa287067cf39088836176fcd`. Все entries/links учтены: auxiliary8, footer1, header1, image2, main_body1, package_metadata4, unknown3. Исходные bytes неизменны, URL не открывался, ML/Word/render не запускались. `.runtime/d03-17a2a-rich-qa.json`.
+
+Полный `bash scripts/check.sh`: **2410 passed + 24 subtests passed**, **77 warnings**, **291,27 секунды**, exit0, Ruff/format прошли. `.runtime/d03-17a2a-full-check.log`. Source после gate не менялся. Baseline schemas/revisions/counts совпал целиком, ara_dev остаётся V8, ara_test пуста, temporary databases0. `.runtime/d03-17a2a-final-runtime.json`. Прежние source/tests/schema/БД/dependencies/runner/tasks/progress не менялись, кроме разрешённых новых exports A2a. Чужие рабочие изменения/архив/секреты сохранены; локальный commit без push. PostgreSQL оставлен запущенным.
+
+## Граница следующего цикла
+
+Следующий **D03-17A2b — отдельное проектирование final-view reader, story coverage и source mapping на Astra 6 High**. Это рекомендация по сложности задачи; после точного проекта реализация снова на Sol 6.1 High. Продуктовые решения уже получены, повторного согласования policy не нужно.
+
+Причина отдельного дизайна: revision markup относится и к границам абзацев/строк таблиц, а не только к run text. Удалённый paragraph mark объединяет содержимое с последующим абзацем, не помечая автоматически весь этот текст удалённым; moveFrom на paragraph mark тоже не равен статусу всех его runs. Основания: [Deleted, Microsoft Learn](https://learn.microsoft.com/en-us/dotnet/api/documentformat.openxml.wordprocessing.deleted?view=openxml-3.0.1), [MoveFrom, Microsoft Learn](https://learn.microsoft.com/en-us/dotnet/api/documentformat.openxml.wordprocessing.movefrom?view=openxml-3.0.1), просмотрены 1 ноября. Вывод для нашей архитектуры: A1 с одним paragraph_anchor на fragment нельзя молча превратить в такой logical paragraph.
+
+На проектировании выбрать совместимый новый profile/DTO с несколькими исходными ranges, семантику paragraph/row/cell insert/delete/move и nested revisions, порядок story/relationships и повторных references, field result/SDT/textbox coverage, сохранение комментариев без включения в ML, технические budgets и matrix отказов. Сначала узкие contracts/frozen cases, затем readers по одному; source ZIP не переписывать, старый A1 и его проверки не ослаблять. B1 result/request DTO и durable lifecycle должны учитывать выбранную новую адресацию, а не закреплять ошибочное обещание одного XML paragraph на любой final fragment.
+
+Ограничения остаются: дополнительные тексты Word ещё не извлечены, финальная редакция правок не прочитана, реальная модель/worker/фильтры/лицензия/desktop не реализованы этими циклами. Inventory и принятая policy — подготовка к reader, не готовый пользовательский анализ.

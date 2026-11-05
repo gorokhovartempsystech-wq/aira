@@ -1,0 +1,15 @@
+# D03-16C3B — discard pending и восстановление всего save
+
+31 октября 2026, Sol 6.1 High. Выполнен d03-16c3b-contract.md: explicit discard_pending очищает только matching pending с полным control proof, reconcile_save повторяемо соединяет commit и finalize. Discard не меняет current/original/receipts. Отсутствие receipt означает отсутствие подтверждения, а не доказательство, что сохранения не было. Поздний commit после неподтверждённого discard отклоняется; matching receipt replay возвращает прежний факт без записи.
+
+Повтор cleanup с тем же или новым request ID подтверждается canonical stored fingerprint и полным empty result, без нового increment/timestamp. Чужой checkpoint/action, corrupt receipt и несовпадающая identity безопасно отказывают. Ответ строится до commit. Reconcile проверяет весь input до записи; два шага используют собственные transactions, failure между ними оставляет durable pending/receipt для повтора. Прежние пять save DTO class AST сверены с HEAD — без изменений; добавлен только DiscardedSave.
+
+Freeze **866f7ca**, red **9 failed**, 2,44 секунды, отсутствовал новый module. Frozen acceptance после freeze не менялась. Targeted **38 passed**, 8,49 секунды, 2 предупреждения: 9 reconcile acceptance, 10 finalize acceptance, 8 commit acceptance и 11 дополнительных reconcile edges. Проверены before/after-commit ACK-loss каждого из двух шагов, race discard/commit, scope, DTO rollback, input/output isolation, отдельный процесс восстановления и inert import.
+
+Полный `bash scripts/check.sh`: **2086 passed, 24 subtests passed**, 72 предупреждения, **198,95 секунды**, exit 0. Ruff/format прошли; source после gate не менялся. Логи .runtime/d03-16c3b-red.log, d03-16c3b-targeted.log, d03-16c3b-full-check.log.
+
+Отдельная disposable QA DB: prepare→reconcile→repeat, затем второй prepare→unconfirmed discard. Current exact совпал с ранее просмотренным rich reference: 48211 bytes, SHA256 `1239ac34f1e975cc56e97698acfab2f747d75e1b97f759b3794f00db66114529`; original exact, storage revision2/receipt1. Второй discard сохранил current, оставил empty checkpoint revision5 и запретил поздний commit. Hash-proof reuse страницы, просмотренной в C2; новый render/Word запуск не заявляется. .runtime/d03-16c3b-qa.json; собственная QA DB удалена.
+
+Baseline схемы/ревизии/счётчиков рабочих баз совпал, ara_test пуста, временных ara_check_* нет. Рабочие базы автоматически не мигрировались: runtime требует V9, ara_dev пока V8. Архив/секреты/чужие изменения/старые tests/schema/API/dependencies/runner/tasks/progress не затронуты. Локальный коммит без push; PostgreSQL оставлен для следующего цикла.
+
+Ограничение: durable storage protocol завершён, но ещё не подключён к живому EditorSession, HTTP и frontend. Перед D подготовлен [архитектурный вход](d03-16d-review-brief.md): рекомендован один проход Astra 6 High для runtime contract, затем Sol 6.1 High на реализацию. D1 не начат. По разрешению пользователя остановка после завершённого цикла для смены режима; собственный PostgreSQL остановлен с сохранением данных после проверки baseline.

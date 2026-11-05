@@ -1,0 +1,18 @@
+# D03-17C1F — передача после E4
+
+**Обработано 3 ноября на Astra6 High:** [C1F design](d03-17c1f-design.md), [точный контракт F1](d03-17c1f1-contract.md). Выбраны три implementation цикла F1 dispatcher, F2 SQL/ledger, F3 composition; следующий режим Sol6.1 High. Unknown create после crash остаётся quarantine, поддерживаемый boot proof ещё не реализован/не проверен; это явно открытый native/desktop release gate, не разрешение сбросить fence. Исходный handoff ниже сохранён. Source/DDL C1F в design-cycle не менялись.
+
+3 ноября 2026. Это handoff для следующего проектирования на **Astra6 High**, не exact contract и не разрешение начать source C1F. [C1](d03-17c1-design.md), [результат E4](d03-17c1e4-result.md), [E3 startup/recovery](d03-17c1e3-contract.md) остаются основаниями. F06–F08/F12; продуктовый scope неизменен, fixture reply не B1 результат, real weights/adapter — C2.
+
+Available Windows E1–E4 и Mac D1–D3 написаны, но это не production supervisor. Итоговый E4 gate3508passed+24subtests/41native skipped,exit0; main V8 unchanged. Source E4 не менялся при finalization; исправлено только ожидание в новой acceptance и порядок imports. Native Windows/VM-crash/suspend/Word остаются внешними gates.
+
+До реализации C1F определить exact API/allowed paths/SQL scope/acceptance freeze. Обязательные вопросы уже учтённого C1F, без новых продуктовых функций:
+
+- Явные start/shutdown/admission, owner и execution slot до SQL claim; release лишь после physical evidence, own I/O quiescence и SQL reconciliation. `resources_closed`, candidate bytes, local permit receipt и durable COMMIT — разные факты. Не ждать SQL/codec под E4 metadata mutex и не делать foreign endpoint/process polling.
+- Bounded dispatcher/DB jobs с отдельным control reserve: прежние ориентиры connect2s,lock500ms,statement2s,idle-in-transaction2s,finalization5s; максимум один publisher/control/reconciliation job. Проверить применимость к текущим PG/libpq, зависший native/DB вызов не оправдывает рост threads/connections. C1A/B остаются authority Stop/publication/unknown COMMIT.
+- Conservative continuous anchors до enqueue/claim/heartbeat, fixed D<=300s, L<=15s и уже вычтенный guard; не продлевать budget от очередного poll. Windows renewFalse/busy, provisional/accepted receipt, natural finish и late Stop должны корректно связываться с C1A и SQL ACK, без ложного подтверждения одной queue.put.
+- Restart queued IDs: bounded snapshot под прежним enqueue advisory lock после ownership, затем ordered project→document→run locks/recheck; новые IDs не включать в старый набор. Unknown enqueue/claim ACK не вызывает повторный inference или новое D; reaper работает без UI, shutdown не делает новых claim.
+- **Durable crash fence до любого create** для Windows unknown pre-return; формат/atomicity/recovery evidence/OS boot proof нужно спроектировать до новой migration или служебного файла. Свободный slot, terminal SQL, истёкшая lease или сообщение «перезапустил» fence не снимают. E3/E4 сами не решают автоматическое восстановление этой ветки. Не закрывать quarantine догадкой и не искать процесс по PID/имени.
+- Barrier/fault matrix полной композиции: claim/heartbeat/Stop/result/permit/commit/reconcile/shutdown и crash cut points. Native Windows proof и real ML не заменять portable fixtures. Заморозить новую acceptance до source, не переписывать существующие C1A–E tests/contracts ради wiring.
+
+После проектирования — передача на Sol6.1 High для реализации в отдельно ограниченных циклах. C1F уже присутствует в остатке **26–41**, этот handoff не добавляет новый ID и не считает design выполненным. Сейчас source/DDL/runner/tasks/progress C1F не менять.

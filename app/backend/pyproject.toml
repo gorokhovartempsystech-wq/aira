@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=75,<83"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ai-requirements-assistant"
+version = "0.1.0"
+description = "Versioned requirements review and controlled merge"
+requires-python = ">=3.12,<3.14"
+dependencies = [
+  "fastapi>=0.115,<1",
+  "uvicorn>=0.30,<1",
+  "pydantic-settings>=2.6,<3",
+  "SQLAlchemy>=2.0,<3",
+  "alembic>=1.14,<2",
+  "psycopg[binary]>=3.2,<4",
+  "python-dotenv>=1.0,<2",
+  "httpx>=0.27,<1",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8,<10", "ruff>=0.12,<1"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"ara.desktop.client" = ["*.mjs"]
+"ara.workspace" = ["static/*.html", "static/*.css", "static/*.js"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests/app", "tests/acceptance", "tests/runner", "tests/db", "tests/documents", "tests/analysis_contract", "tests/runs", "tests/worker", "tests/reviews", "tests/drafts", "tests/docx_package", "tests/docx_projection", "tests/docx_editing", "tests/docx_ranges", "tests/docx_session", "tests/docx_documents"]
+pythonpath = ["src"]
+addopts = "-ra"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+extend-exclude = [".runtime", ".ralph"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]

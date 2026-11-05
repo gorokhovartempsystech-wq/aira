@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Документы · AIRA</title>
+  <link rel="stylesheet" href="/workspace/assets/app.css">
+  <script type="module" src="/workspace/assets/app.js"></script>
+</head>
+<body>
+  <aside class="sidebar">
+    <a class="brand" href="/workspace" aria-label="AIRA — документы"><span class="brand-mark">a</span>AIRA</a>
+    <p class="sidebar-label">РАБОЧЕЕ ПРОСТРАНСТВО</p>
+    <div class="navigation" aria-current="page"><span aria-hidden="true">▤</span> Документы</div>
+    <div class="sidebar-footer"><span class="dot"></span> Локальная работа</div>
+  </aside>
+  <main>
+    <header class="page-header">
+      <div><p class="eyebrow">ВАШЕ РАБОЧЕЕ ПРОСТРАНСТВО</p><h1>Документы</h1>
+      <p class="subtitle">Требования и сохранённые документы в одном месте.</p></div>
+      <span class="badge">Предварительная версия</span>
+    </header>
+    <div id="notice" class="notice" role="status" aria-live="polite">Загружаем список документов…</div>
+    <section class="card new-document" aria-labelledby="create-heading">
+      <h2 id="create-heading">Новый документ</h2>
+      <p class="muted">Начните с чистого документа по шаблону AIRA.</p>
+      <form id="create-form" class="create-form">
+        <div class="create-field"><label for="create-name">Название нового документа</label>
+          <input id="create-name" type="text" maxlength="400" autocomplete="off" placeholder="Например, Требования к каталогу"></div>
+        <button id="create-document" class="button primary" type="submit">Создать документ</button>
+        <button id="create-reset" class="button secondary" type="button" hidden>Завершить попытку</button>
+      </form>
+      <p id="create-pending" class="muted" hidden>Создание ещё не подтверждено. Повторите попытку, чтобы получить тот же документ.</p>
+    </section>
+    <div class="workspace-grid">
+      <section class="card library" aria-labelledby="library-title">
+        <div class="card-heading"><div><h2 id="library-title">Сохранённые документы</h2>
+          <p id="count" class="muted">Список документов</p></div>
+          <button id="refresh" class="button secondary" type="button">Обновить</button></div>
+        <ul id="documents" class="document-list" aria-label="Сохранённые документы"></ul>
+        <div id="empty" class="empty" hidden><span class="empty-icon" aria-hidden="true">▤</span>
+          <h3>Пока нет документов</h3><p>Создайте документ или загрузите DOCX — он появится здесь.</p></div>
+        <div class="library-footer"><span class="muted">Формат документов · DOCX</span>
+          <button id="more" class="button secondary" type="button" hidden>Ещё документы</button></div>
+      </section>
+      <div class="right-column">
+        <section class="card" aria-labelledby="upload-title">
+          <span class="step-label">ДОБАВИТЬ В РАБОТУ</span><h2 id="upload-title">Загрузить DOCX</h2>
+          <p class="muted intro">Исходный файл и сохранённая рабочая копия будут храниться отдельно.</p>
+          <form id="upload-form">
+            <label for="file">Файл документа</label>
+            <input id="file" type="file" accept=".docx">
+            <label for="title">Название документа</label>
+            <input id="title" type="text" maxlength="400" placeholder="Например, Требования к устройству" autocomplete="off">
+            <button id="upload" class="button primary" type="submit" disabled>Сохранить документ <span aria-hidden="true">↗</span></button>
+          </form>
+        </section>
+        <section class="card details" aria-labelledby="details-title">
+          <span class="step-label">ВЫБРАННЫЙ ДОКУМЕНТ</span><h2 id="details-title">Сведения</h2>
+          <p id="selection-hint" class="muted intro">Выберите документ в списке, чтобы посмотреть сведения и скачать его.</p>
+          <div id="selection" hidden><h3 id="selected-title"></h3>
+            <dl><div><dt>Формат</dt><dd>DOCX</dd></div><div><dt>Размер</dt><dd id="selected-size"></dd></div>
+              <div><dt>Сохранён</dt><dd id="selected-date"></dd></div></dl>
+            <button id="download" class="button secondary wide" type="button">Скачать DOCX <span aria-hidden="true">↓</span></button>
+          </div>
+        </section>
+      </div>
+    </div>
+    <section id="tabs-section" class="document-tabs" aria-label="Открытые документы" hidden>
+      <div id="document-tabs" class="tab-strip" role="tablist" aria-label="Открытые документы"></div>
+      <p class="muted">При переключении черновик сохраняется. Автосохранение DOCX работает в выбранной вкладке.</p>
+    </section>
+    <section id="view" class="card document-preview" role="tabpanel" aria-labelledby="view-heading" hidden>
+      <div class="preview-heading"><h2 id="view-heading">Содержимое документа</h2>
+        <span class="badge">Упрощённый вид · правка фрагментов</span>
+        <button id="reload-document" type="button" class="button secondary">Обновить документ</button></div>
+      <h3 id="view-title"></h3>
+      <p id="view-status" class="muted" role="status" aria-live="polite"></p>
+      <section id="text-editor" class="text-editor" aria-labelledby="edit-heading" hidden>
+        <h3 id="edit-heading">Правка выбранного фрагмента</h3>
+        <p class="muted">Меняется только выбранный текст. Новые абзацы и переносы пока не поддерживаются.</p>
+        <p class="muted">Изменения автоматически сохраняются в DOCX раз в две минуты. На время записи ввод приостанавливается.</p>
+        <label for="edit-text">Текст фрагмента</label>
+        <textarea id="edit-text" rows="4" maxlength="200000" spellcheck="true"></textarea>
+        <p class="muted">Отмена и повтор доступны для этого фрагмента, пока он открыт.</p>
+        <p id="edit-status" class="muted" role="status" aria-live="polite"></p>
+        <div class="edit-actions">
+          <button id="edit-undo" type="button" class="button secondary" title="Ctrl/Cmd+Z" disabled>Отменить изменение</button>
+          <button id="edit-redo" type="button" class="button secondary" title="Ctrl+Y или Ctrl/Cmd+Shift+Z" disabled>Повторить изменение</button>
+          <button id="edit-save" type="button" class="button primary">Сохранить правку</button>
+          <button id="edit-cancel" type="button" class="button secondary">Отменить правку</button></div>
+      </section>
+      <p id="view-warning" class="view-warning" hidden>Некоторые элементы не отображаются в этом представлении. Они сохранены в DOCX; полный документ можно скачать.</p>
+      <div id="view-body" class="view-body"></div>
+    </section>
+    <footer class="page-footer">AIRA <span>·</span> Пространство для работы с требованиями</footer>
+    <noscript>Для работы экрана включите JavaScript в браузере.</noscript>
+  </main>
+  <dialog id="discard-dialog" aria-labelledby="discard-title">
+    <h2 id="discard-title">Есть несохранённая правка</h2>
+    <p>Отбросить введённый текст и перейти к другому фрагменту или документу?</p>
+    <form method="dialog" class="edit-actions"><button class="button primary" value="stay" autofocus>Остаться</button>
+      <button class="button secondary" value="discard">Отбросить правку</button></form>
+  </dialog>
+  <dialog id="close-tab-dialog" aria-labelledby="close-tab-title">
+    <h2 id="close-tab-title">Закрыть вкладку?</h2>
+    <p id="close-tab-message">Черновик сохранится на этом компьютере и восстановится при открытии документа. История отмены завершится. Закрытие не отменяет уже записанные изменения DOCX.</p>
+    <form method="dialog" class="edit-actions">
+      <button class="button primary" value="stay" autofocus>Остаться</button>
+      <button class="button secondary" value="close">Закрыть вкладку</button>
+    </form>
+  </dialog>
+  <dialog id="create-reset-dialog" aria-labelledby="create-reset-title">
+    <h2 id="create-reset-title">Завершить попытку создания?</h2>
+    <p>Документ мог уже создаться и остаться в списке. Завершение попытки ничего не удаляет. После этого можно начать создание другого документа.</p>
+    <form method="dialog" class="edit-actions">
+      <button class="button primary" value="stay" autofocus>Остаться</button>
+      <button class="button secondary" value="finish">Завершить попытку</button>
+    </form>
+  </dialog>
+</body>
+</html>

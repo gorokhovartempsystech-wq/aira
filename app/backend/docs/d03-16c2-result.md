@@ -1,0 +1,15 @@
+# D03-16C2 — atomic current save + receipt
+
+31 октября 2026, Sol 6.1 High. Выполнен d03-16c2-contract.md: commit_save принимает полную revalidated/detached SaveHandle, читает кандидат только из durable pending, обновляет current и общий receipt одной transaction. Original/pending bytes/metadata/revision/timestamp не меняются. CommittedSave разделяет receipt и текущий document, current_matches_receipt учитывает storage revision, а не только bytes.
+
+Receipt replay после scope/current validation не читает checkpoint/legacy: они могли быть заменены. Full proof проверяет expected receipt revision=base+1/candidate hash/size; matched head дополнительно title/hash/size/update identity. Old namespace collisions ->409, malformed/несогласованные receipt ->500 без починки/удаления. Fresh first commit требует того же pending/base/current и не принимает новые caller bytes. Scope/foreign-writer/altered handle/отсутствующий pending безопасно отказывают.
+
+Freeze **575a41b**, red **8 failed**, 1,84 секунды — новый commit module отсутствовал. Frozen acceptance не менялась. Targeted **34 passed**, 7,34 секунды, 2 предупреждения — 8 commit acceptance, 7 прежних prepare acceptance, 10 дополнительных commit и 9 прежних prepare edges. Before/after-commit ACK-loss, two concurrent commits, same-byte save +1, receipt INSERT/DTO rollback, старый text namespace, corrupt candidate hash/size/revision, input without DB connection, metadata isolation, separate-process commit/replay, import inertness проверены.
+
+Полный `bash scripts/check.sh`: **2046 passed, 24 subtests passed**, 68 предупреждений, **188,07 секунды**, exit 0. Ruff/format прошли. AST прежних SaveHandle/PreparedSave классов также сравнен с HEAD при добавлении CommittedSave: без изменений. Source после gate не менялся. Логи .runtime/d03-16c2-red.log, d03-16c2-targeted.log, d03-16c2-full-check.log.
+
+Отдельная disposable QA DB: original synthetic rich-source + candidate из ранее отрендеренного D03-15A. Prepare/commit/replay дали exact current 48211 bytes, SHA256 `1239ac34f1e975cc56e97698acfab2f747d75e1b97f759b3794f00db66114529`, storage revision2, один receipt, pending неизменен, original exact. Candidate совпал с existing reference, единственная page image повторно осмотрена: таблица/рисунок/списки/колонтитулы/оформление сохранены, clipping/overlap нет. Это hash-proof reuse, не новый render или запуск Word. .runtime/d03-16c2-qa.json; QA DB создана/удалена самим скриптом .runtime/d03-16c2-qa.py.
+
+Baseline рабочих схем/ревизий/счётчиков совпал; ara_test пуста, временных ara_check_* нет. Рабочая DB автоматически не мигрировалась, API runtime требует V9. Секреты/архив/чужие dirty-файлы/старые tests/schema/API/dependencies/runner/tasks/progress не затронуты. Local commit без push, PostgreSQL оставлен для следующего цикла.
+
+Ограничение: receipt подтверждает запись current, но pending ещё сохраняется и mark_saved controller не вызывается. Следующий C3 — finalize/discard_pending/status/reconcile, затем runtime controller/handoff. Продолжать Sol 6.1 High автоматически.

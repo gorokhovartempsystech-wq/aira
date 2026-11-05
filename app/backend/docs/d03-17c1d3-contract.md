@@ -1,0 +1,39 @@
+# D03-17C1D3 — parent transport и проверка candidate
+
+2 ноября 2026, Sol6.1 High после проверенного D2 `706cefb`. F06–F08/F12; [C1D](d03-17c1d-design.md)/[Stop supplement](d03-17c1d2-stop-addendum.md) обязательны. Один synthetic attempt, без SQL/scheduler/HTTP/engine. D1/D2/C1A–C1C source/tests/contracts unchanged.
+
+Allowed: новые `macos/driver.py`, `_control_pipe.py`, `_data_pump.py`, `_driver_models.py`; новая frozen `tests/acceptance/test_docx_analysis_macos_driver.py`; own `tests/docx_documents/test_analysis_macos_driver_*.py`. Контракт/acceptance до freeze; result/C1D/queue status после gate. Не менять exports D1, зависимости/runner/tasks/progress/старые tests/DDL. Fixture factory D2 используется как есть; тестовые standalone wrappers допустимы только внутри tests.
+
+## API
+
+`driver.start_fixture_attempt(slot:SlotLease, identity:AttemptIdentity, budget:Budget, *, request:bytes, execution_spec:bytes, mode='success')->MacAttempt` — explicit I/O. Factory-only process-local object, не copy/pickle, безопасный repr. Constructor импортов не запускает процессы. Identity exact UUID/fence1 и Budget exact ints проверяются/отделяются от caller DTO. Request1..8MiB/spec1..4KiB, immutable bytes; C1C frame/hash validation до launch. Clock Darwin continuous; `now < L <= D`, D-now<=300s, L-now<=15s, guard уже учтён C1A. Никакого второго guard/новых300s. Expired/clock failure не стартует G; validation_error не меняет native resources. Mode только closed D2 fixture enum, никакого executable/env/reply из user input. Reply fixture не B1-анализ.
+
+Методы:
+
+- `.view()->AttemptView`: frozen/slotted detached metadata, без payload/request/spec/path/PID/FD. Fields phase(starting/running/stopping/closed/blocked), stage(None/loading_model/analyzing), stop_requested:bool, error_code:None|fixed enum, exit_kind:None|clean/stopped/crashed, exit_code:int|None, cleanup_confirmed:bool, candidate_ready:bool, fixture=True. Snapshot не authority. View не читает clock/SQL; показывает последнее наблюдение pump/control.
+- `.candidate()->bytes|None`: только валидный transport candidate, после готовности всех proofs ниже и при ещё живом local D/L и отсутствии local Stop/error. Повтор возвращает тот же immutable bytes reference, не запускает inference/replay. Это ещё не B1 success. Ошибка/Stop/истечение времени отзывают дальнейшую выдачу; уже переданный caller bytes защищает C1A/B. Метод явно проверяет clock, не разрешает renewal/restart.
+- `.renew(lease_ns:int)->bool`: trusted C1F вызов после accepted SQL ACK, не продуктовый endpoint. Canonical signed63 bound, Lnew<=D, <=now+15s; старый L ещё жив. D не меняется. True — atomic permit отправлен; False — control уже нормально finished/stopped (без новой ошибки/записи). Invalid scalar — validation_error без mutation; expiry/I/O/backpressure — close control+sticky error, runtime_unavailable. Не оживлять старый L.
+- `.stop(reason='user')->None`: closed C1C reason enum, idempotent/coalescing local flag, stop frame и закрытие control. Backpressure/error — просто закрыть control, вычисление останавливается по EOF/последнему L; safe fixed error metadata, no raw error. Не ждать data pump/decoder/SQL; отдельный short mutex только control writer. Invalid reason — validation_error без mutation. Поздний Stop отзывает ещё не взятый candidate, не удаляет историю/SQL success.
+- `.close(timeout=5.0)->bool`: explicit shutdown. Если pump жив — Stop(shutdown), bounded join; если уже завершён — не превращать clean в Stop. True только когда pump вышел и собственный G reaped; False при незавершённом cleanup, ресурсы/record сохраняются для дальнейшего ожидания. Не kill по PID и не закрывать S slot. После True освобождает свои pipes/буферы/candidate; view metadata остаётся. Local wait timeout не является бюджетом модели или proof.
+
+Private `_control_pipe.ControlPipe` получает issued FixtureGuardian+binding+budget+clock; initial permit seq0 отправляет до старта data thread. Небольшие frames≤PIPE_BUF проверяются через fpathconf, O_NONBLOCK write atomic; seq только после полного write,512frames/1MiB caps. Нет queue permits/блокировки на большом request/reply. Stop/renew/finish/close serialized, invalidate fd через holder D2 до close syscall. `.finish()` закрывает control без Stop только после natural transport завершения. Failure never revives; controls не используют data mutex. Fixed error codes validation/runtime input отдельно от view codes `clock`, `lease`, `deadline`, `protocol`, `process`, `transport`, `shutdown_timeout`; это metadata, не новые MacRuntimeError/ML schema values.
+
+## Data pump и evidence
+
+Ровно один explicit background thread на attempt; `.start` не возвращает неопределённую ошибку после запуска без закрытия control/своих pipes. Request frame подготовлен до G spawn; после spawn pump ждёт **armed token+EOF**, повторно проверяет Stop/time, только затем пишет request chunks≤64KiB и закрывает writer. Все data endpoints nonblocking, bounded per-turn work, select wait<=100ms. Stage snapshot один; no unbounded queue/callbacks/communicate/readall. Ready/spec, event sequence/count/caps/hashes через frozen C1C. Events/status EOF обязателен, trailing/partial/error+exit0 reject. Stderr D2 drain/flood proof учитывается через closed kind.
+
+Candidate возможен только при совокупности:
+
+1. Valid armed+EOF, один ready/stages/result с exact spec digest, events EOF, нет лишних bytes.
+2. Valid closed(clean,0,True), status EOF, собственный G завершился **exit0** и reaped; status DTO отдельно не authority.
+3. Local Stop/fault отсутствуют, live local budget; затем caller C1F ставит C1A child_closed и передаёт bytes в guarded publisher. D3 сам C1A/SQL не вызывает.
+
+Valid model error + nonzero child code не кандидат; показать fixed `process` metadata (D/F уточнят пользовательский error mapping), без выдуманного «нет замечаний». Result+hang/child nonzero/tail/flood/G death/status loss — не candidate. Cleanup true может сочетаться с protocol error, но не даёт publication. После первого closed/G exit drain оставшихся pipe bytes ограничен min(D,L,exit-observed+2s); нет EOF → protocol/transport error. Expiry/clock/Stop в любой фазе закрывают control независимо от data buffer; guardian teardown ожидается, не early cleanup ACK.
+
+При смерти G/unknown status pump завершает чтение по ограниченному drain, view blocked/cleanupFalse; модель может ещё держать inherited slot. Slot принадлежит caller и ни start failure, ни close driver его не снимают. Independent probe+SQL reconciliation — C1F. Stage/closed/candidate updates под коротким metadata mutex; parsing/IO/clock/process.wait и joins вне этого mutex. Python scheduling/GIL не hard real-time: last permit всё равно независимо ограничивает G.
+
+Буферы: один prepared request frame≤12MiB (освободить после write/fault), decoder≤одного bounded frame, один candidate≤4MiB, metadata O(1). Полный request/reply не копировать в view/diagnostics/queues. Immutable bytes могут иметь bounded transient codec copies; это не RSS limit модели. Thread completion terminal без autorestart; повторный запуск только новым slot/claim у C1F.
+
+## Acceptance
+
+Новая acceptance compile/collect/fixtures review→freeze/red перед source. Native complete fixture/immutable metadata/candidate identity, explicit Stop и request backpressure, malformed/trailing/nonzero/error/result-hang/stderr flood, budget expiry/renew late/fixedD/caps/atomic write EAGAIN, G death+slot hold, unknown status без success. Детерминированные wrappers там, где native scheduling не гарантирует cut point; synthetic/fake не объявлять ML/Windows proof. Privacy/inert import, invalid local API без spawn, handle/FD cleanup и repeated attempts/no worker leak. Старые D1/D2 и codec/controller tests обязательны. Targeted/native/own + `bash scripts/check.sh`, read-only runtime comparison, result/local commit. После D3 — отдельный C1E Windows exact contract/native ownership gate; Mac-only tests его не закрывают.

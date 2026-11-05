@@ -1,0 +1,8 @@
+"""Collect editor-history integration under the existing session testpaths."""
+
+from tests.docx_editor import test_history_edges as edges
+
+test_reply_failure = edges.test_controller_reply_allocation_failure_preserves_all_state
+test_range_caret = edges.test_range_change_undo_and_stale_capture_cannot_overwrite_current
+test_state_budget = edges.test_state_budget_eviction_and_table_target_do_not_desynchronize_metadata
+test_strict_inputs = edges.test_strict_models_bad_anchor_and_missing_after_revision_priority
