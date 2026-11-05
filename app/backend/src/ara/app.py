@@ -13,9 +13,10 @@ def create_app(
     document_runtime: "DocumentRuntime | None" = None,
     analysis_supervisor=None,
     table_editor=False,
+    field_editor=False,
 ) -> FastAPI:
     """Create an independent application without configuration or service access."""
-    if type(table_editor) is not bool:
+    if type(table_editor) is not bool or type(field_editor) is not bool:
         from ara.config import ConfigurationError
 
         raise ConfigurationError("Invalid editor policy")
@@ -59,7 +60,9 @@ def create_app(
         install_runs(app, document_runtime)
         install_reviews(app, document_runtime)
         install_workspace(app)
-        install_editor_json(app, document_runtime, table_editor=table_editor)
+        install_editor_json(
+            app, document_runtime, table_editor=table_editor, field_editor=field_editor
+        )
         install_editor_downloads(app)
         install_editor_discard(app)
 

@@ -9,6 +9,11 @@ from ..wire import encode_message
 
 
 def run_fixture(api, binding, request, mode, emit, diagnostic_handle):
+    if mode == "local_model":
+        from ..native_model import run_native
+
+        return run_native(request, emit)
+
     def send(kind, seq, **values):
         emit(encode_message(binding, kind=kind, seq=seq, values=values))
 

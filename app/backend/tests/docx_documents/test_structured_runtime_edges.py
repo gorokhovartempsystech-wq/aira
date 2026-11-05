@@ -69,13 +69,13 @@ def test_both_child_bodies_execute_new_fixture_with_the_existing_frame_protocol(
         assert b"PRIVATE" not in b"".join(frames)
 
 
-def test_both_launch_boundaries_register_only_the_new_fixed_mode_without_replacing_old_modes():
+def test_both_launch_boundaries_register_fixed_local_model_without_replacing_old_modes():
     from ara.docx_analysis_worker.macos._launch import MODES as mac
     from ara.docx_analysis_worker.windows._adopt import MODES as windows
 
     for modes in (mac, windows):
         assert "review2" in modes and "review" in modes and "success" in modes
-        assert "local_model" not in modes and "unknown" not in modes
+        assert "local_model" in modes and "unknown" not in modes
 
 
 @pytest.mark.parametrize("value", [None, True, {}, "unknown/v1"])

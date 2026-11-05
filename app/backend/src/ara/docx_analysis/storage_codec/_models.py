@@ -103,7 +103,7 @@ class CodecLimits:
     max_manifest_bytes: int = 33554432
     max_command_bytes: int = 16384
     max_execution_bytes: int = 4096
-    max_fragments: int = 512
+    max_fragments: int = 1024
     max_text_characters: int = 1000000
     review: ReviewLimits = field(default_factory=ReviewLimits)
 

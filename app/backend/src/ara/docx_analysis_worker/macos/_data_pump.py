@@ -10,7 +10,8 @@ from ._driver_models import AttemptView
 
 
 class DataPump:
-    def __init__(self, holder, control, binding, spec_sha, frame, clock):
+    def __init__(self, holder, control, binding, spec_sha, frame, clock, *, fixture=True):
+        self.fixture = fixture
         self.holder, self.control, self.clock = holder, control, clock
         self._frame, self._offset = frame, 0
         self._fds = {name: getattr(holder, name + "_fd") for name in ("armed", "events", "status")}
@@ -43,6 +44,7 @@ class DataPump:
                 self._exit_code,
                 self._cleanup,
                 self._candidate is not None and not (stopped or error),
+                self.fixture,
             )
 
     def candidate(self):

@@ -266,9 +266,41 @@ class _Projector:
             rows.append(Row(self.anchors[row], tuple(cells), self._properties_anchor(row, "trPr")))
         return Table(self.anchors[node], tuple(rows), self._properties_anchor(node, "tblPr"))
 
-    def blocks(self, body: ET.Element) -> tuple[Paragraph | Table | OpaqueBlock, ...]:
-        if any(_local(child) in ("fldChar", "instrText") for child in body.iter()):
-            return (self._opaque(body, "complex_field"),)
+    def blocks(
+        self, body: ET.Element, *, isolate_fields=False
+    ) -> tuple[Paragraph | Table | OpaqueBlock, ...]:
+        has_fields = any(_local(child) in ("fldChar", "instrText") for child in body.iter())
+        blocked = set()
+        if has_fields:
+            if not isolate_fields:
+                return (self._opaque(body, "complex_field"),)
+            # Protect WHOLE top-level blocks touched by a field. Never expose cached
+            # results as editable text. Invalid field grammar retains the old boundary.
+            stack = []
+            invalid = False
+            for block in body:
+                touched = bool(stack)
+                for node in block.iter():
+                    name = _local(node)
+                    if name == "fldChar":
+                        touched = True
+                        kind = _attribute(node, "fldCharType")
+                        if kind == "begin":
+                            stack.append(False)
+                        elif kind == "separate" and stack and not stack[-1]:
+                            stack[-1] = True
+                        elif kind == "end" and stack:
+                            stack.pop()
+                        else:
+                            invalid = True
+                    elif name == "instrText":
+                        touched = True
+                        if not stack or stack[-1]:
+                            invalid = True
+                if touched:
+                    blocked.add(block)
+            if invalid or stack:
+                return (self._opaque(body, "complex_field"),)
 
         children = [child for child in body if _local(child) != "sectPr"]
         projected: dict[ET.Element, Paragraph | Table | OpaqueBlock] = {}
@@ -279,7 +311,9 @@ class _Projector:
         while pending:
             node, finish = pending.pop()
             name = _local(node)
-            if finish:
+            if node in blocked:
+                projected[node] = self._opaque(node, "complex_field")
+            elif finish:
                 projected[node] = self._table(node, projected)
             elif name == "p":
                 reason = _paragraph_reason(node)
@@ -303,11 +337,11 @@ class _Projector:
         return tuple(projected[child] for child in children)
 
 
-def project_main(source: DocxSource, root: ET.Element) -> DocxProjection:
+def project_main(source: DocxSource, root: ET.Element, *, isolate_fields=False) -> DocxProjection:
     projector = _Projector(source, root)
     body_tag = root.tag.rpartition("}")[0] + "}body"
     body = next(child for child in root if child.tag == body_tag)
-    blocks = projector.blocks(body)
+    blocks = projector.blocks(body, isolate_fields=isolate_fields)
     for child in root:
         if child is not body and _local(child) != "background":
             projector._notice("unprojected_root_element", child)

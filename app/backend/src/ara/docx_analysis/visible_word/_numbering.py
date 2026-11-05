@@ -2,6 +2,10 @@
 
 from ara.docx_analysis.compatibility_contexts._anchors import SourceAnchors
 from ara.docx_analysis.visibility._grammar import Unsupported, check
+from ara.docx_analysis.visible_lists._state import Selection
+from ara.docx_analysis.visible_main._build import paragraph_style
+from ara.docx_analysis.visible_main._models import budget
+from ara.docx_analysis.visible_style_lists._definitions import require
 from ara.docx_analysis.visible_style_lists._grammar import Grammar as BaseGrammar
 from ara.docx_analysis.visible_style_lists._state import State as StyleState
 from ara.docx_analysis.visible_unlisted._grammar import integer
@@ -13,6 +17,35 @@ class Grammar(SourceAnchors, BaseGrammar):
 
 
 class State(StyleState):
+    def inherited(self, identity):
+        chain, key = [], identity
+        while key is not None:
+            paragraph_style(self.styles, key)
+            style = self.styles[key]
+            budget(len(chain) + 1, self.limits.styles.max_chain_depth)
+            chain.append(style.anchor)
+            node = self.style_nodes.get(style.anchor.path)
+            require(node is not None, "unresolved_style_list_binding")
+            ns = node.tag.rpartition("}")[0] + "}"
+            props = next((n for n in node if n.tag == ns + "pPr"), None)
+            numpr = (
+                None if props is None else next((n for n in props if n.tag == ns + "numPr"), None)
+            )
+            if numpr is not None:
+                values = {n.tag[len(ns) :]: integer(n.get(ns + "val")) for n in numpr}
+                number = values["numId"]
+                if number == 0:
+                    return None
+                definition, binding = self.bound_level(number, identity)
+                # Require agreement: Word and ISO differ on conflicting style ilvl.
+                require(
+                    "ilvl" not in values or values["ilvl"] == definition.level,
+                    "ambiguous_style_list_level",
+                )
+                return Selection(number, numpr.anchor, definition), tuple(chain), binding
+            key = style.based_on
+        return None
+
     def __init__(self, data, source, bounds, namespace, limits, prepared):
         self.part, self.linked, self.failed, self.cache = None, False, False, {}
         self.abstracts, self.instances = {}, {}

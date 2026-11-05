@@ -7,7 +7,7 @@ from ..projection import project_docx
 from ..structure import StructureError
 from ..structure._models import text_valid
 from ..structure._package import read_main, repack
-from ..structure._xml import check_target
+from ..structure._xml import _BLOCKED, check_target, word_name
 from ._models import EditorError
 
 
@@ -26,8 +26,24 @@ def _prepare(core, snapshot, index):
     try:
         tree = Tree(raw, (p,), BoundaryLimits())
         node = tree.nodes[p.anchor.path]
+        isolated = core._projection_limits.isolate_complex_fields
         if tree.blocked:
-            raise BoundaryError("unsupported_boundary")
+            # This path only inserts within one verified ordinary paragraph.
+            # Fields/bookmarks/proofing markers elsewhere retain their exact bytes;
+            # tracked changes, permissions and comment ranges remain unsupported.
+            preserved = {"fldChar", "instrText", "bookmarkStart", "bookmarkEnd", "proofErr"}
+            unsafe = any(
+                local
+                and (
+                    local in _BLOCKED - preserved
+                    or local.endswith("PrChange")
+                    or (local.startswith("move") and "Range" in local)
+                )
+                for n in tree.nodes.values()
+                if (local := word_name(n.name))
+            )
+            if not isolated or unsafe:
+                raise BoundaryError("unsupported_boundary")
         check_target(node, tree.nodes, p)
         props, runs = paragraph(tree, node, p)
         validate_lists(tree, snapshot.data, snapshot.projection.source, core._limits)

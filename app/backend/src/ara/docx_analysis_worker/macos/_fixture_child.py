@@ -11,6 +11,17 @@ from ..wire import encode_message
 
 
 def run_fixture(binding, request, mode):
+    if mode == "local_model":
+        from ..native_model import run_native
+
+        def write(raw):
+            while raw:
+                count = os.write(1, raw)
+                if count <= 0:
+                    raise OSError()
+                raw = raw[count:]
+
+        return run_native(request, write)
     native_hang = mode in ("ignore_term", "result_hang")
     library = None
     if native_hang:

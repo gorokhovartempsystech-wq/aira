@@ -19,6 +19,15 @@ def duration(value):
     return (value.days * 86400 + value.seconds) * 1_000_000_000 + value.microseconds * 1000
 
 
+def claim_budget_start(started, received, receipt):
+    sample = receipt.budget_started_ns
+    if receipt.replayed or sample is None:
+        return started
+    if type(sample) is not int or not started <= sample <= received:
+        raise ValueError("invalid claim clock sample")
+    return sample
+
+
 def claim_args(c, e):
     return dict(
         document_id=e.command.document_id,
@@ -91,7 +100,7 @@ def result(c, tag, e, cell):
             else:
                 now = c.sample()
                 b = make_budget(
-                    started_ns=e.claim_started,
+                    started_ns=claim_budget_start(e.claim_started, now, value),
                     received_ns=now,
                     remaining_deadline_ns=duration(claim.deadline_at - claim.claimed_at),
                     remaining_lease_ns=duration(claim.lease_expires_at - claim.claimed_at),
@@ -148,7 +157,10 @@ def result(c, tag, e, cell):
                 and not view.stop_requested
             ):
                 e.candidate, e.captured_ns = value.candidate, captured
-        e.need_close = e.physical or bool(e.reason)
+        # Process exit is not transport completion. Closing now can discard the
+        # last result bytes while the native reader is still draining its pipes.
+        # Native transport retains its bounded drain/error handling; Stop still wins.
+        e.need_close = (e.physical and e.candidate is not None) or bool(e.reason)
     elif tag == "close_native":
         e.physical = e.physical or value.physical_confirmed
         if value.closed:
@@ -365,7 +377,9 @@ def drive(c):
                 c.submit(
                     "control",
                     "claim",
-                    lambda: lifecycle.claim_exact(c.runtime(), **claim_args(c, e)),
+                    lambda: lifecycle.claim_exact(
+                        c.runtime(), **claim_args(c, e), monotonic=c.s._platform.clock
+                    ),
                     e,
                 )
         elif e.stage == "resolve_claim":

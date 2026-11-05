@@ -41,7 +41,7 @@ class _Actor:
 
 
 class EditorRegistry:
-    def __init__(self, runtime, *, limits=None, table_editor=False):
+    def __init__(self, runtime, *, limits=None, table_editor=False, field_editor=False):
         from sqlalchemy import Engine
 
         from ara.documents.runtime import DocumentRuntime
@@ -54,12 +54,16 @@ class EditorRegistry:
             and type(getattr(runtime, "mode", None)) is str
             and runtime.mode == "local"
         )
-        validate(type(table_editor) is bool)
+        validate(type(table_editor) is bool and type(field_editor) is bool)
         self._editor_type = EditorSession
         if table_editor:
             from ara.docx_package.table_editor import TableEditorSession
 
             self._editor_type = TableEditorSession
+        if field_editor:
+            from ara.docx_package.table_editor.field_safe import FieldSafeTableEditorSession
+
+            self._editor_type = FieldSafeTableEditorSession
         self._runtime = DocumentRuntime(
             engine=runtime.engine,
             user_id=runtime.user_id,

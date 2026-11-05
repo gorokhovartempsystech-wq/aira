@@ -38,7 +38,15 @@ def _identity(run, attempt, attempt_id, worker):
 
 
 def claim_exact(
-    runtime, *, document_id, run_id, attempt_id, worker_instance_id, owner, limits=None
+    runtime,
+    *,
+    document_id,
+    run_id,
+    attempt_id,
+    worker_instance_id,
+    owner,
+    limits=None,
+    monotonic=None,
 ):
     _storage.context(runtime)
     for value in (document_id, run_id, attempt_id, worker_instance_id):
@@ -74,6 +82,9 @@ def claim_exact(
                 old.terminal(run, "failed", code, clock(session))
             result = ClaimReceipt(None, state(run))
         return result
+    # Preparation is outside the lease. Sample before the transaction which grants it;
+    # all lock/commit latency still consumes the conservative native budget.
+    budget_started = monotonic() if monotonic is not None else None
     with db.transaction(runtime.engine) as session:
         run, attempt, scope = locked(session, document_id, run_id, runtime=runtime)
         _clean(session, owner)
@@ -129,7 +140,7 @@ def claim_exact(
             run.deadline_at,
             run.lease_expires_at,
         )
-        result = ClaimReceipt(claim, state(run), replayed)
+        result = ClaimReceipt(claim, state(run), replayed, None if replayed else budget_started)
     return result
 
 

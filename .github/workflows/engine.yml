@@ -2,10 +2,10 @@ name: engine
 
 on:
   pull_request:
-    paths: ["engine/**", "contracts/**", ".github/workflows/engine.yml"]
+    paths: ["engine/**", "contracts/**", "tools/prepare_ml_bundle.py", "app/backend/**", ".github/workflows/engine.yml"]
   push:
     branches: [main]
-    paths: ["engine/**", "contracts/**"]
+    paths: ["engine/**", "contracts/**", "tools/prepare_ml_bundle.py", "app/backend/**"]
 
 jobs:
   test:
@@ -24,3 +24,24 @@ jobs:
             engine/requirements-test.txt
       - run: pip install -r requirements-engine.txt -r requirements-test.txt
       - run: python -m pytest -q
+
+  ml-adapter:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app/backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: app/backend/requirements.lock
+      - run: pip install -r requirements.lock
+      - name: Focused ML adapter, evidence and DOCX tests (no database or native OS admission)
+        run: >-
+          python -m pytest -q
+          tests/acceptance/test_local_model_adapter.py
+          tests/acceptance/test_docx_partial_questions.py
+          tests/acceptance/test_field_safe_editor.py
+          tests/acceptance/test_docx_word_crm_reader.py

@@ -1,4 +1,6 @@
-"""Inert font/web/theme descriptions; no text, embedded resources or extensions."""
+"""Inert font/web/theme descriptions and one closed Office theme-family extension."""
+
+import re
 
 from ara.docx_analysis.visibility._grammar import boolean, check
 from ara.docx_package._xml import WORD_NAMESPACES
@@ -126,7 +128,7 @@ def web(root):
     for node in root:
         empty_text(node)
         check(
-            node.tag in {ns + "allowPNG", ns + "doNotSaveAsSingleFile"}
+            node.tag in {ns + "allowPNG", ns + "doNotSaveAsSingleFile", ns + "optimizeForBrowser"}
             and node.tag not in seen
             and not len(node)
             and set(node.attrib) <= {ns + "val"}
@@ -135,13 +137,37 @@ def web(root):
         boolean(node.get(ns + "val"))
 
 
+def theme_family(node, ns):
+    empty_text(node)
+    check(not node.attrib and len(node) == 1)
+    ext = node[0]
+    empty_text(ext)
+    check(ext.tag == ns + "ext" and ext.attrib == {"uri": "{05A4C25C-085E-4340-85A3-A5531E510DB2}"})
+    check(len(ext) == 1)
+    family = ext[0]
+    empty_text(family)
+    check(family.tag == "{http://schemas.microsoft.com/office/thememl/2012/main}themeFamily")
+    check(not len(family) and set(family.attrib) == {"name", "id", "vid"})
+    check(bool(family.get("name")))
+    for key in ("id", "vid"):
+        check(
+            re.fullmatch(
+                r"\{[0-9A-Fa-f]{8}(?:-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}\}", family.get(key)
+            )
+            is not None
+        )
+
+
 def theme(root):
     ns = root.tag.rpartition("}")[0] + "}"
     check(root.tag in {"{" + n + "}theme" for n in DRAWING})
     check(set(root.attrib) <= {"name"})
     tags = [n.tag for n in root]
     check(tags.count(ns + "themeElements") == 1 and len(tags) == len(set(tags)))
-    check(set(tags) <= {ns + "themeElements", ns + "objectDefaults", ns + "extraClrSchemeLst"})
+    check(
+        set(tags)
+        <= {ns + "themeElements", ns + "objectDefaults", ns + "extraClrSchemeLst", ns + "extLst"}
+    )
     elements = next(n for n in root if n.tag == ns + "themeElements")
     check([n.tag for n in elements] == [ns + n for n in ("clrScheme", "fontScheme", "fmtScheme")])
     tags = {ns + n for n in THEME_NAMES}
@@ -149,6 +175,9 @@ def theme(root):
     while stack:
         node = stack.pop()
         empty_text(node)
+        if node.tag == ns + "extLst" and node in list(root):
+            theme_family(node, ns)
+            continue
         check(node.tag in tags)
         check(set(node.attrib) <= THEME_ATTRIBUTES.get(node.tag[len(ns) :], frozenset()))
         stack.extend(node)

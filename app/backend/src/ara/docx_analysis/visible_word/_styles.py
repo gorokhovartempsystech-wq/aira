@@ -1,15 +1,53 @@
 """Validated spacing leaf and conservative agreement of duplicated style definitions."""
 
-from ara.docx_analysis.visibility._grammar import boolean, check
+import re
+
+from ara.docx_analysis.visibility._grammar import boolean, check, decimal
 from ara.docx_analysis.visible_style_lists._contexts import Grammar as StyleGrammar
 from ara.docx_package._xml import WORD_NAMESPACES
 
+from ._tabs import tabs
+
 
 class Grammar(StyleGrammar):
+    def leaf(self, node):
+        if self.name(node) == "numPr":
+            self.attrs(node)
+            children = self.children(node, {"ilvl", "numId"})
+            check([self.name(n) for n in children] in (["numId"], ["ilvl", "numId"]))
+            for child in children:
+                super().leaf(child)
+                self.attrs(child, {"val"}, {"val"})
+                decimal(self.attr(child, "val"))
+                if self.name(child) == "ilvl":
+                    check(int(self.attr(child, "val")) <= 8)
+            return
+        if self.name(node) == "tabs":
+            return tabs(self, node)
+        return super().leaf(node)
+
     def property_names(self, kind):
-        return super().property_names(kind) | ({"contextualSpacing"} if kind == "pPr" else set())
+        return super().property_names(kind) | (
+            {"contextualSpacing", "tabs"} if kind == "pPr" else {"kern", "spacing", "noProof"}
+        )
 
     def properties(self, node, kind):
+        if kind == "rPr":
+            for child in node:
+                if self.name(child) == "kern":
+                    self.leaf(child)
+                    self.attrs(child, {"val"}, {"val"})
+                    decimal(self.attr(child, "val"))
+                elif self.name(child) == "spacing":
+                    self.leaf(child)
+                    self.attrs(child, {"val"}, {"val"})
+                    value = self.attr(child, "val")
+                    check(re.fullmatch(r"[+-]?[0-9]{1,10}", value) is not None)
+                    check(-(2**31) <= int(value) < 2**31)
+                elif self.name(child) == "noProof":
+                    self.leaf(child)
+                    self.attrs(child, {"val"})
+                    boolean(self.attr(child, "val"))
         if kind == "pPr":
             for child in node:
                 if self.name(child) == "contextualSpacing":

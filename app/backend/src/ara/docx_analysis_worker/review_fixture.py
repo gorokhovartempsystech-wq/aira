@@ -4,7 +4,7 @@ import re
 from dataclasses import fields
 from hashlib import sha256
 
-from ara.docx_analysis.storage_codec import ExecutionSpec, decode_execution
+from ara.docx_analysis.storage_codec import CodecLimits, ExecutionSpec, decode_execution
 from ara.docx_analysis.storage_codec._json import canonical_counter, canonical_uuid, encoded, parsed
 from ara.docx_analysis.storage_codec._models import digest
 from ara.docx_analysis.visible_main._models import POLICY, PROFILE
@@ -75,7 +75,7 @@ def _fragments(engine, *, keys="fragments disabled_types dismissed"):
     _keys(engine, keys)
     _require(engine["disabled_types"] == [] and engine["dismissed"] == [])
     fragments = engine["fragments"]
-    _require(type(fragments) is list and 1 <= len(fragments) <= 512)
+    _require(type(fragments) is list and 1 <= len(fragments) <= CodecLimits().max_fragments)
     identities, count = set(), 0
     for f in fragments:
         _keys(f, "id text document status type offset")

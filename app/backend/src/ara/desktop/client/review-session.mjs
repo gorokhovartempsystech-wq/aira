@@ -1,3 +1,4 @@
+import {extendedReview} from './review-extensions.mjs';
 import {DocxClientError, requireValue, uuid, counter, copyJson} from './protocol.mjs';
 const LIMIT=16*1024*1024+65536;
 const digest=v=>requireValue(typeof v==='string'&&v.length===64&&/^[0-9a-f]{64}$/.test(v),'invalid_response');
@@ -23,6 +24,7 @@ export function createReviewSession({documentId,editor,send,makeId=()=>globalThi
  }
  function checked(raw,runId){
    const r=clone(raw),v=r.view,s=r.run,p=r.preferences;
+   const extension=extendedReview(v);
    requireValue(r.schema_version==='docx-review-http/1'&&s.document_id===documentId
      &&(runId===null||s.run_id===runId)&&s.status==='succeeded','invalid_response');uuid(s.run_id);
    digest(s.source_sha256);counter(s.storage_revision,1n);digest(r.view_sha256);digest(r.current_sha256);counter(r.current_storage_revision,1n);
@@ -31,13 +33,13 @@ export function createReviewSession({documentId,editor,send,makeId=()=>globalThi
      &&r.matches_saved_document===(r.current_sha256===s.source_sha256&&r.current_storage_revision===s.storage_revision),'invalid_response');
    requireValue(p.document_id===documentId,'invalid_response');counter(p.revision);
    filters({disabled_types:p.disabled_types,show_questions:p.show_questions,show_hidden:p.show_hidden});
-   requireValue(/^docx-review-view\/[1-5]$/.test(v.schema_version)&&v.fixture===r.fixture
+   requireValue((extension!==null||/^docx-review-view\/[1-5]$/.test(v.schema_version))&&v.fixture===r.fixture
      &&v.source.document_id===documentId&&v.source.source_sha256===s.source_sha256
      &&v.source.storage_revision===s.storage_revision&&Array.isArray(v.findings)
      &&Array.isArray(v.questions)&&Array.isArray(v.hidden_finding_ids)
      &&typeof v.no_findings==='boolean'&&v.no_visible_findings===(v.findings.length===0)
      &&Number.isSafeInteger(v.counts.total_findings)&&v.counts.total_findings>=v.findings.length
-     &&v.counts.visible_findings===v.findings.length&&v.no_findings===(v.counts.total_findings===0),'invalid_response');
+     &&v.counts.visible_findings===v.findings.length&&(extension!==null||v.no_findings===(v.counts.total_findings===0)),'invalid_response');
    digest(v.stored_result_sha256);for(const item of v.findings)finding(item.finding_id);
    for(const id of v.hidden_finding_ids)finding(id);
    requireValue(new Set(v.findings.map(x=>x.finding_id)).size===v.findings.length,'invalid_response');return r;
