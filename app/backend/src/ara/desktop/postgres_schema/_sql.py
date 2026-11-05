@@ -74,7 +74,7 @@ def inventory(connection):
     return {name for name, kind in rows if kind == "r"}
 
 
-def state(connection):
+def state(connection, *, revision=REVISION):
     tables = inventory(connection)
     if not tables:
         return "empty"
@@ -83,19 +83,24 @@ def state(connection):
         "SELECT version_num FROM public.alembic_version LIMIT 2"
     ).all()
     require(len(rows) == 1 and type(rows[0][0]) is str and 0 < len(rows[0][0]) <= 64)
-    require(rows[0][0] == REVISION, "schema_upgrade_required")
+    require(rows[0][0] == revision, "schema_upgrade_required")
     return "current"
 
 
-def shape(connection):
+def shape(connection, *, revision=REVISION):
     from sqlalchemy import inspect
 
     from ara import models  # noqa: F401 -- register current schema
     from ara.db import Base
 
-    require(inventory(connection) == set(Base.metadata.tables) | {"alembic_version"})
+    tables = {
+        name: table
+        for name, table in Base.metadata.tables.items()
+        if revision == "0014_docx_file_states" or name != "docx_file_states"
+    }  # Exact selected schema; V13 does not acquire V14 tables implicitly.
+    require(inventory(connection) == set(tables) | {"alembic_version"})
     inspector = inspect(connection)
-    for name, table in Base.metadata.tables.items():
+    for name, table in tables.items():
         actual = {
             c["name"]: (str(c["type"].compile(dialect=connection.dialect)), c["nullable"])
             for c in inspector.get_columns(name)
@@ -154,7 +159,7 @@ def seed(connection, installation):
     require(result.rowcount == 1)
 
 
-def identities(connection, installation, *, initial):
+def identities(connection, installation, *, initial, revision=REVISION):
     from ara.db import Base
 
     require(
@@ -187,7 +192,9 @@ def identities(connection, installation, *, initial):
             and all(value is None for value in row[4:])
         )
         for name in Base.metadata.tables:
-            if name not in ("users", "projects", "docx_analysis_supervisor"):
+            if name not in ("users", "projects", "docx_analysis_supervisor") and (
+                revision == "0014_docx_file_states" or name != "docx_file_states"
+            ):
                 require(
                     not connection.exec_driver_sql(
                         "SELECT EXISTS (SELECT 1 FROM public."

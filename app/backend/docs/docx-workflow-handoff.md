@@ -1,5 +1,11 @@
 # Complete DOCX client/backend workflow
 
+Additional backend file persistence: [D03-19B SQL state](d03-19b-backend-files.md) and
+[D03-19C Python native IO](d03-19c-native-files.md). These require V14 and are tested
+independently; this original workflow fixture still targets V13 by default.
+[D03-19D](d03-19d-desktop-files.md) adds an explicit V14 launch/upgrade profile.
+Native file buttons/picker/IPC are not wired by this original workflow script.
+
 Run from the project root on this Mac:
 
 ```bash

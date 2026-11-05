@@ -1039,3 +1039,25 @@ class DocxReviewReceipt(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("clock_timestamp()")
     )
+
+
+class DocxFileState(Base):
+    """Private host file association; not exposed by document HTTP serializers."""
+
+    __tablename__ = "docx_file_states"
+    __table_args__ = (
+        CheckConstraint("version > 0", name="ck_dfs_version"),
+        CheckConstraint("jsonb_typeof(state) = 'object'", name="ck_dfs_state"),
+        CheckConstraint("octet_length(state::text) <= 32768", name="ck_dfs_state_size"),
+        CheckConstraint(
+            "payload IS NULL OR octet_length(payload) BETWEEN 1 AND 33554432",
+            name="ck_dfs_payload",
+        ),
+    )
+
+    document_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("docx_documents.id"), primary_key=True
+    )
+    version: Mapped[int] = mapped_column(BigInteger(), nullable=False)
+    state: Mapped[dict] = mapped_column(JSONB(), nullable=False)
+    payload: Mapped[bytes | None] = mapped_column(BYTEA(), nullable=True)

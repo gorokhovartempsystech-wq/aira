@@ -133,13 +133,13 @@ class JournalFiles(Filesystem):
 
 
 class Journal:
-    def __init__(self, home, installation, cluster):
+    def __init__(self, home, installation, cluster, *, revision=REVISION):
         self.fs = JournalFiles(home.path("backups") / "schema")
         self.owner = None
         self.uncertain = False
         self.expected = {
-            "initializing": record(installation, cluster, "intent"),
-            "ready": record(installation, cluster, "ready"),
+            "initializing": record(installation, cluster, "intent") | {"revision": revision},
+            "ready": record(installation, cluster, "ready") | {"revision": revision},
         }
         self.raw = {}
         self.partial = None

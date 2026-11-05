@@ -7,7 +7,7 @@ from uuid import uuid4
 import pytest
 from alembic.autogenerate import compare_metadata
 from alembic.migration import MigrationContext
-from sqlalchemy import inspect, text
+from sqlalchemy import MetaData, inspect, text
 from sqlalchemy.exc import IntegrityError
 from test_docx_analysis_storage_migrations import H, insert, migrate_down, parents, put, records
 from test_docx_storage_transactions import bounded_connections, observe_backend, wait_for_lock
@@ -88,6 +88,10 @@ def test_upgrade_preserves_every_old_table_and_matches_orm(empty_pg_engine, appl
     assert {
         c.__tablename__ for c in (DocxReviewDismissal, DocxReviewPreferences, DocxReviewReceipt)
     } == TABLES
+    historical_metadata = MetaData()
+    for table in Base.metadata.sorted_tables:
+        if table.name != "docx_file_states":
+            table.to_metadata(historical_metadata)
     engine = empty_pg_engine
     apply_migrations(engine, V12)
     with engine.begin() as conn:
@@ -114,7 +118,7 @@ def test_upgrade_preserves_every_old_table_and_matches_orm(empty_pg_engine, appl
                 MigrationContext.configure(
                     conn, opts={"compare_type": True, "compare_server_default": True}
                 ),
-                Base.metadata,
+                historical_metadata,
             )
             == []
         )

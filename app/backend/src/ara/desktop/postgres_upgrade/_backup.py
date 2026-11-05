@@ -23,7 +23,9 @@ class Backup(Ownership):
         self.bundle = self.command = None
         self.archive_fd = None
         self.archive_key = None
-        self.binding = backend.journal.binding | {"source_revision": SOURCE}
+        self.binding = backend.journal.binding | {
+            "source_revision": getattr(backend.journal, "source_revision", SOURCE)
+        }
 
     def run_command(self, executable, args, *, capture=False, monitor=None):
         self.backend.check()

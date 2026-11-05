@@ -6,11 +6,11 @@ import threading
 
 from ara.desktop import _migration_gate
 
-from ._models import SchemaError, SchemaView, require
+from ._models import REVISION, SchemaError, SchemaView, require
 
 
 class SchemaPreparation:
-    def __init__(self, home, cluster, *, migrations):
+    def __init__(self, home, cluster, *, migrations, revision=REVISION):
         from ara.desktop.data_home import DataHome
         from ara.desktop.postgres_cluster import ClusterRuntime
         from ara.desktop.postgres_cluster._models import checked_path
@@ -27,6 +27,11 @@ class SchemaPreparation:
             )
         except Exception:
             raise SchemaError("invalid_handle") from None
+        require(
+            type(revision) is str and revision in (REVISION, "0014_docx_file_states"),
+            "validation_error",
+        )
+        self._revision = revision
         self._home, self._cluster, self._migrations = home, cluster, migrations
         self._pid = os.getpid()
         self._lock = threading.Lock()

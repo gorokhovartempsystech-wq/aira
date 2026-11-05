@@ -96,6 +96,7 @@ def check_database(engine):
         if session.scalar(text("SELECT version_num FROM alembic_version")) not in (
             "0012_docx_continuous_timeout",
             "0013_docx_review_preferences",
+            "0014_docx_file_states",
         ):
             db.fail("recovery_required")
         db.locked(session)

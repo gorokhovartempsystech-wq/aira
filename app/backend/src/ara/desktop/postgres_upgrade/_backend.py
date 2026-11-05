@@ -20,6 +20,12 @@ class Backend(SchemaBackend):
     def __init__(self, runtime):
         super().__init__(runtime)
         self.backup = self.probe = None
+        self.source_revision = getattr(runtime, "_source", SOURCE)
+        self.policy_options = (
+            {}
+            if self.revision == TARGET
+            else {"source": self.source_revision, "target": self.revision}
+        )
 
     def phase(self, phase):
         self.check()
@@ -64,8 +70,8 @@ class Backend(SchemaBackend):
             is True,
             "upgrade_busy",
         )
-        revision = _sql.revision(self.connection)
-        if not self.pending() and revision in (None, TARGET):
+        revision = _sql.revision(self.connection, **self.policy_options)
+        if not self.pending() and revision in (None, self.revision):
             return UpgradeResult(
                 self.installation.installation_id,
                 self.identity.system_identifier,
@@ -73,8 +79,8 @@ class Backend(SchemaBackend):
                 revision,
                 revision,
             )
-        require(revision in (SOURCE, TARGET))
-        self.journal = Journal(self.home, self.installation, self.identity)
+        require(revision in (self.source_revision, self.revision))
+        self.journal = Journal(self.home, self.installation, self.identity, **self.policy_options)
         self.journal.open()
         self.journal.load(revision)
         _sql.shape(self.connection, revision)
@@ -97,18 +103,18 @@ class Backend(SchemaBackend):
             metadata = self.backup.create(self.journal.source, snapshot)
             self.check()
             self.journal.begin(metadata)
-        if revision == SOURCE:
+        if revision == self.source_revision:
             self.phase("migrating")
             self.migrate()
-            require(_sql.revision(self.connection) == TARGET)
-            _sql.shape(self.connection, TARGET)
+            require(_sql.revision(self.connection, **self.policy_options) == self.revision)
+            _sql.shape(self.connection, self.revision)
             _sql.admission(self.connection, self.installation)
         self.check()
         self.transaction.commit()
         self.transaction = None
         self.check()
         _sql.physical(self.connection, self.identity)
-        require(_sql.revision(self.connection) == TARGET)
+        require(_sql.revision(self.connection, **self.policy_options) == self.revision)
         _sql.admission(self.connection, self.installation)
         self.phase("publishing")
         self.journal.finish()
@@ -117,8 +123,8 @@ class Backend(SchemaBackend):
             self.installation.installation_id,
             self.identity.system_identifier,
             self.identity.database_oid,
-            SOURCE,
-            TARGET,
+            self.source_revision,
+            self.revision,
             UUID(metadata["backup_id"]),
             metadata["archive_sha256"],
             metadata["archive_size"],

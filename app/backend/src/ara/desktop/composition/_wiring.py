@@ -80,12 +80,29 @@ class Session:
         self.wait(self.cluster)
         self.stage("upgrade")
         self.upgrade = UpgradePreparation(
-            self.home, self.cluster, migrations=cfg.migrations, tools=cfg.upgrade
+            self.home,
+            self.cluster,
+            migrations=cfg.migrations,
+            tools=cfg.upgrade,
+            **(
+                {}
+                if cfg.schema_revision == "0013_docx_review_preferences"
+                else {"target_revision": cfg.schema_revision}
+            ),
         )
         self.wait(self.upgrade, ("ready", "not_needed"), settled=True)
         self.upgrade.result()
         self.stage("schema")
-        self.schema = SchemaPreparation(self.home, self.cluster, migrations=cfg.migrations)
+        self.schema = SchemaPreparation(
+            self.home,
+            self.cluster,
+            migrations=cfg.migrations,
+            **(
+                {}
+                if cfg.schema_revision == "0013_docx_review_preferences"
+                else {"revision": cfg.schema_revision}
+            ),
+        )
         self.wait(self.schema, settled=True)
         self.stage("database")
         self.source = bind_database(self.home, self.cluster, schema=self.schema)

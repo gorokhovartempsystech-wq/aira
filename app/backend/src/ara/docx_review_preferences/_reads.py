@@ -42,9 +42,9 @@ def transaction(runtime, document_id, *, writing=False):
                 "SET LOCAL transaction_timeout='5s'",
             ):
                 session.execute(text(statement))
-            if (
-                session.scalar(text("SELECT version_num FROM alembic_version"))
-                != "0013_docx_review_preferences"
+            if session.scalar(text("SELECT version_num FROM alembic_version")) not in (
+                "0013_docx_review_preferences",
+                "0014_docx_file_states",
             ):
                 fail("preferences_schema_unavailable")
             _storage.scope(session, runtime, document_id, writing=writing)

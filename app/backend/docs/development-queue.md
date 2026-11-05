@@ -1,5 +1,38 @@
 # Последовательные циклы разработки AIRA
 
+**5 November: D03-19D completed.** [Result](d03-19d-result.md), [V14 host profile](d03-19d-desktop-files.md).
+Owned V14 launch/reopen and backed-up V13-to-V14 upgrade preserve documents across
+pre/post-COMMIT interruption. Full **7067 passed,45 skipped,24 subtests,exit0**;
+1036 source/test hashes unchanged. B/C/D implement independent file binding, native
+Python saving, recovery and schema setup. Default V13 retained; V14 is explicit.
+Remaining: final picker/IPC/UI wiring with native-write drain on shutdown, native
+Windows acceptance and the previously listed model/licensing/distribution gates.
+No finished product release is claimed.
+
+**5 ноября — D03-19C Python native files завершён:** [результат](d03-19c-result.md).
+Реальные DOCX/save/reopen/recovery/new-process/Save As, без Node-зависимости.
+Full **7058 passed,45 skipped,24 subtests,exit0**,1035 hashes unchanged.
+Далее D03-19D — явный V14 desktop profile и backup/recovery upgrade V13→V14;
+текущий default V13 и его проверки сохраняются. GUI/model не выбираются.
+
+**5 ноября — D03-19B backend storage/recovery завершён:** [результат](d03-19b-result.md).
+Привязка файла, отдельный pending payload, восстановление/конфликты и file-dirty.
+Full **7042 passed,45 skipped,24 subtests,exit0**. Launcher пока V13; сервис на V14.
+Далее D03-19C — Python native IO и реальный файловый сценарий, без выбора оболочки.
+
+**5 ноября — новый запрос на сохранение в реальный файл: D03-19A проверен.**
+[Результат](d03-19a-result.md), [контракт host-интеграции](native-docx-save.md).
+Добавлен Node-host adapter: исходный файл/новый путь, подтверждённая запись,
+ошибки/отмена/повтор и проверка внешних изменений. Full **7025 passed,45 skipped,
+24 subtests,exit0**, 1344.05s. Это не готовая кнопка в GUI и не выбор Electron.
+Никита подтвердил, что desktop-оболочка ещё не выбрана. Node в установщик не добавлен.
+[D03-19B — привязка после перезапуска](d03-19b-file-association-design.md) пока только
+проект; production writer/IPC и его durable association требуют стыковки с оболочкой.
+Ручная история, недавние, AI-контекст и остальные расширения новой спеки не добавлены
+без согласования. Прежнее «0» ниже относится только к D03-18A backend/client scope,
+а не к соответствию новой спецификации и не к готовности пользовательского выпуска.
+
+
 **5 ноября — самостоятельная интеграционная последовательность завершена.**
 По прямой команде Никиты устранены тайм-ауты обработки Word и выполнены D03-18A3–A7.
 

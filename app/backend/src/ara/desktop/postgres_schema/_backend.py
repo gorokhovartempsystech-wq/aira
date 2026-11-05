@@ -17,6 +17,8 @@ class Stopped(Exception):
 class Backend:
     def __init__(self, runtime):
         self.runtime = runtime
+        self.revision = getattr(runtime, "_revision", REVISION)
+        self.schema_options = {} if self.revision == REVISION else {"revision": self.revision}
         self.home, self.cluster = runtime._home, runtime._cluster
         self.installation = self.home.identity()
         self.identity = self.cluster.identity()
@@ -65,9 +67,14 @@ class Backend:
         cfg.set_main_option("script_location", str(self.runtime._migrations).replace("%", "%%"))
         cfg.attributes["connection"] = self.connection
         require(
-            ScriptDirectory.from_config(cfg).get_heads() == [REVISION], "schema_upgrade_required"
+            ScriptDirectory.from_config(cfg).get_heads() == [self.revision]
+            or (
+                self.revision == REVISION
+                and ScriptDirectory.from_config(cfg).get_heads() == ["0014_docx_file_states"]
+            ),
+            "schema_upgrade_required",
         )
-        command.upgrade(cfg, REVISION)
+        command.upgrade(cfg, self.revision)
 
     def run(self):
         from sqlalchemy import create_engine, event
@@ -76,7 +83,7 @@ class Backend:
         require(not any(key in os.environ for key in LIBPQ_ENV), "schema_unavailable")
         self.deadline = self.clock.now_ns() + 120_000_000_000
         self.check()
-        self.journal = Journal(self.home, self.installation, self.identity)
+        self.journal = Journal(self.home, self.installation, self.identity, **self.schema_options)
         self.journal.open()
         self.check()
         self.engine = create_engine(
@@ -98,7 +105,7 @@ class Backend:
             is True,
             "schema_busy",
         )
-        state = _sql.state(self.connection)
+        state = _sql.state(self.connection, **self.schema_options)
         initial = not self.journal.completed
         if state == "empty":
             require(initial and ".ready.json.pending" not in self.journal.raw)
@@ -108,8 +115,8 @@ class Backend:
             _sql.seed(self.connection, self.installation)
         else:
             require(self.journal.completed or self.journal.initialized)
-        _sql.shape(self.connection)
-        _sql.identities(self.connection, self.installation, initial=initial)
+        _sql.shape(self.connection, **self.schema_options)
+        _sql.identities(self.connection, self.installation, initial=initial, **self.schema_options)
         self.check()
         self.transaction.commit()
         self.transaction = None
@@ -117,8 +124,8 @@ class Backend:
         # COMMIT was acknowledged. Reconfirm what will be represented by the
         # durable receipt; an ACK-loss never reaches this publication step.
         _sql.physical(self.connection, self.identity)
-        require(_sql.state(self.connection) == "current")
-        _sql.identities(self.connection, self.installation, initial=initial)
+        require(_sql.state(self.connection, **self.schema_options) == "current")
+        _sql.identities(self.connection, self.installation, initial=initial, **self.schema_options)
         self.check()
         self.journal.finish()
         self.check()
@@ -128,6 +135,7 @@ class Backend:
             self.installation.project_id,
             self.identity.system_identifier,
             self.identity.database_oid,
+            revision=self.revision,
         )
 
     def close(self):

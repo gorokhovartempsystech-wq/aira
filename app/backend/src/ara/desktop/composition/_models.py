@@ -45,6 +45,7 @@ class FixtureConfig:
     clock: object = field(default=None, repr=False)
     transport: object = field(default=None, repr=False)
     analysis_mode: str = "legacy_fixture"
+    schema_revision: str = "0013_docx_review_preferences"
 
     def __post_init__(self):
         try:
@@ -58,6 +59,11 @@ class FixtureConfig:
                     "style_lists_fixture",
                     "word_fixture",
                 )
+            )
+            require(
+                type(self.schema_revision) is str
+                and self.schema_revision
+                in ("0013_docx_review_preferences", "0014_docx_file_states")
             )
             checked_path(self.home)
             checked_path(self.migrations)

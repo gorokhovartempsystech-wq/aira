@@ -6,7 +6,7 @@ from ara.desktop.postgres_schema._sql import physical as physical
 from ._models import SOURCE, TARGET, require
 
 
-def revision(connection):
+def revision(connection, *, source=SOURCE, target=TARGET):
     tables = inventory(connection)
     if not tables:
         return None
@@ -15,7 +15,7 @@ def revision(connection):
         "SELECT version_num FROM public.alembic_version LIMIT 2"
     ).all()
     require(len(rows) == 1 and type(rows[0][0]) is str)
-    require(rows[0][0] in (SOURCE, TARGET), "unsupported_revision")
+    require(rows[0][0] in (source, target), "unsupported_revision")
     return rows[0][0]
 
 
@@ -48,8 +48,12 @@ def shape(connection, revision):
     tables = {
         name: table
         for name, table in Base.metadata.tables.items()
-        if revision == TARGET
-        or name not in {"docx_review_preferences", "docx_review_dismissals", "docx_review_receipts"}
+        if (revision == "0014_docx_file_states" or name != "docx_file_states")
+        and (
+            revision in (TARGET, "0014_docx_file_states")
+            or name
+            not in {"docx_review_preferences", "docx_review_dismissals", "docx_review_receipts"}
+        )
     }
     require(inventory(connection) == set(tables) | {"alembic_version"})
     inspector = inspect(connection)

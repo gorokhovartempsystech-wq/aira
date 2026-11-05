@@ -1,5 +1,5 @@
 {
-  "source_commit": "dd17b01cd58ff5ea595f60dcf481b0495602429e",
+  "source_commit": "a791363112dd2f768bd4a7752a9dfb9e89fc6aea",
   "files": [
     {
       "path": ".gitignore",
@@ -108,8 +108,8 @@
     },
     {
       "path": "docs/current-product-scope.md",
-      "sha256": "c9294623b839f2cba94c9926980864dacbf7efc0f17d5520fd49455f6173e7a4",
-      "source_sha256": "a318a9ef584f15b3c3edab39375d86e07b55e44b8944164b3d645039d173e243"
+      "sha256": "41c23d2eb68786fb46dd7dff60e63a46d4c1c9c645de56d089ebd46a29f94fc9",
+      "source_sha256": "af7655e5b2827e2d2e326ecdc90fc47c249fa77ebbc230ec2219f9db4a6ee64b"
     },
     {
       "path": "docs/d01-01-contract.md",
@@ -1647,6 +1647,66 @@
       "source_sha256": "f83bae4ff1f81bfaf478279129aebaca705314584781f3dfb65cb5242839c12c"
     },
     {
+      "path": "docs/d03-19a-contract.md",
+      "sha256": "7c0f98729d4a02b10c8e7fb254c3f64fb248f9cbbce88742770208c05857d535",
+      "source_sha256": "7c0f98729d4a02b10c8e7fb254c3f64fb248f9cbbce88742770208c05857d535"
+    },
+    {
+      "path": "docs/d03-19a-result.md",
+      "sha256": "a6f9662cb424d6d5ca2076c0d20a136dbc4e5b4e269a227f96dedade183e2b98",
+      "source_sha256": "a6f9662cb424d6d5ca2076c0d20a136dbc4e5b4e269a227f96dedade183e2b98"
+    },
+    {
+      "path": "docs/d03-19b-backend-files.md",
+      "sha256": "a0cc8761a1731e01b89e273fc7f0642e14d56b9d703cdd35094054b5b2c49c16",
+      "source_sha256": "a0cc8761a1731e01b89e273fc7f0642e14d56b9d703cdd35094054b5b2c49c16"
+    },
+    {
+      "path": "docs/d03-19b-contract.md",
+      "sha256": "e41aac20e343d19e219a3d3d3fa2cea00f25a7d242fea4e24727812d607e19fd",
+      "source_sha256": "e41aac20e343d19e219a3d3d3fa2cea00f25a7d242fea4e24727812d607e19fd"
+    },
+    {
+      "path": "docs/d03-19b-file-association-design.md",
+      "sha256": "6205d345bb61619a930728cdf60cc8f8b7032c3e50c6a4827ea586548fed0a3f",
+      "source_sha256": "6205d345bb61619a930728cdf60cc8f8b7032c3e50c6a4827ea586548fed0a3f"
+    },
+    {
+      "path": "docs/d03-19b-result.md",
+      "sha256": "c4e38fe3a26d86fc0a54433e2e3aecaec169f87802f19d2d1fc4f53983095f63",
+      "source_sha256": "c4e38fe3a26d86fc0a54433e2e3aecaec169f87802f19d2d1fc4f53983095f63"
+    },
+    {
+      "path": "docs/d03-19c-contract.md",
+      "sha256": "ff9624828420babec6f474c140859c30e4d20a9792780280461ab0c7c08cea63",
+      "source_sha256": "ff9624828420babec6f474c140859c30e4d20a9792780280461ab0c7c08cea63"
+    },
+    {
+      "path": "docs/d03-19c-native-files.md",
+      "sha256": "d0017a987ff5043225cd07a44590c2204592168f71781cd38d4d39e591a83e68",
+      "source_sha256": "d0017a987ff5043225cd07a44590c2204592168f71781cd38d4d39e591a83e68"
+    },
+    {
+      "path": "docs/d03-19c-result.md",
+      "sha256": "5aaed181205a62118da11b1568ba603400a77cf09e49ff8d07ad5a6c5b861f4d",
+      "source_sha256": "5aaed181205a62118da11b1568ba603400a77cf09e49ff8d07ad5a6c5b861f4d"
+    },
+    {
+      "path": "docs/d03-19d-contract.md",
+      "sha256": "c6ff9539dd0ad5bbeffb66a0fca018bdaf4cafbafd9c8374b9cef59a8ce083c3",
+      "source_sha256": "c6ff9539dd0ad5bbeffb66a0fca018bdaf4cafbafd9c8374b9cef59a8ce083c3"
+    },
+    {
+      "path": "docs/d03-19d-desktop-files.md",
+      "sha256": "3f78f7aacb3a58f0e7db93739a5c1898946092ce77fb1a85c1fc588e1fe4425d",
+      "source_sha256": "3f78f7aacb3a58f0e7db93739a5c1898946092ce77fb1a85c1fc588e1fe4425d"
+    },
+    {
+      "path": "docs/d03-19d-result.md",
+      "sha256": "d30cb774cc7074ff1644c6bc54eb1f3a455ceae7844978d1415086fdf5c14f6a",
+      "source_sha256": "d30cb774cc7074ff1644c6bc54eb1f3a455ceae7844978d1415086fdf5c14f6a"
+    },
+    {
       "path": "docs/d04-01-contract.md",
       "sha256": "dd1570f35b0dcda33d7633322d588a42d23ea64baf68d9fc123b75afdd05c49c",
       "source_sha256": "dd1570f35b0dcda33d7633322d588a42d23ea64baf68d9fc123b75afdd05c49c"
@@ -1873,8 +1933,8 @@
     },
     {
       "path": "docs/development-queue.md",
-      "sha256": "1441aa1e7a09e5161cf73763416f8add858da7cda872a8ae64b9cc76735a61dc",
-      "source_sha256": "1441aa1e7a09e5161cf73763416f8add858da7cda872a8ae64b9cc76735a61dc"
+      "sha256": "0c81d706105c802fb4152ab7c01df9a301758503415b93bb37015d8817afdf10",
+      "source_sha256": "0c81d706105c802fb4152ab7c01df9a301758503415b93bb37015d8817afdf10"
     },
     {
       "path": "docs/docx-analysis-api.md",
@@ -2113,8 +2173,8 @@
     },
     {
       "path": "docs/docx-workflow-handoff.md",
-      "sha256": "8f0ae69ff390ea90c4bba403f85e16cb17f9b8a2b079f68ae1832be474fa8781",
-      "source_sha256": "8f0ae69ff390ea90c4bba403f85e16cb17f9b8a2b079f68ae1832be474fa8781"
+      "sha256": "2fdf4fcd3ab50b0f6427cdc8aa73c32a212a4dc284edff867859a29caafbf140",
+      "source_sha256": "2fdf4fcd3ab50b0f6427cdc8aa73c32a212a4dc284edff867859a29caafbf140"
     },
     {
       "path": "docs/first-ralph-cycle.md",
@@ -2155,6 +2215,11 @@
       "path": "docs/mvp-scope-draft.md",
       "sha256": "0d480ee27ee4f49e01c9e67665aa47b93daab8dea9206de870f7b864bbe650bc",
       "source_sha256": "3590fadf8895f980d50995f56b60bc0d5f4fb8ed4d2f1228b98f6691fbcfd467"
+    },
+    {
+      "path": "docs/native-docx-save.md",
+      "sha256": "b779accde83c29938d1b1368bdfeb653af3860deac394b7cfc936a7cce606998",
+      "source_sha256": "b779accde83c29938d1b1368bdfeb653af3860deac394b7cfc936a7cce606998"
     },
     {
       "path": "docs/ralph-usage.md",
@@ -2305,6 +2370,11 @@
       "path": "migrations/versions/0013_docx_review_preferences.py",
       "sha256": "941052ca76d79f4f5eb2e7ce1b16d83872f6d0acc9ffb1e98ed37f513c5ae369",
       "source_sha256": "941052ca76d79f4f5eb2e7ce1b16d83872f6d0acc9ffb1e98ed37f513c5ae369"
+    },
+    {
+      "path": "migrations/versions/0014_docx_file_states.py",
+      "sha256": "97e630e3062cb1c70a4752d3faac6120e1299d227cac79064cb02ce7232e9106",
+      "source_sha256": "97e630e3062cb1c70a4752d3faac6120e1299d227cac79064cb02ce7232e9106"
     },
     {
       "path": "pyproject.toml",
@@ -2517,6 +2587,16 @@
       "source_sha256": "c29abbb8547911fe990063d37b2b02f82fb9c1cc334580a9b4bd53f19fd843e8"
     },
     {
+      "path": "src/ara/desktop/client/native-docx-file.mjs",
+      "sha256": "8daaae5ce6df125dc0515c04ac32798ab50019cb5824f65fe807f231dd27ba40",
+      "source_sha256": "8daaae5ce6df125dc0515c04ac32798ab50019cb5824f65fe807f231dd27ba40"
+    },
+    {
+      "path": "src/ara/desktop/client/native-docx-save.mjs",
+      "sha256": "b1b2b8b7de8d0b2db192791256f1257c82e66b3b151b21601b91ec137c908bdb",
+      "source_sha256": "b1b2b8b7de8d0b2db192791256f1257c82e66b3b151b21601b91ec137c908bdb"
+    },
+    {
       "path": "src/ara/desktop/client/protocol.mjs",
       "sha256": "392f0c96a1f4bc80a2489d40870feaaed9e34f17de73b947833152e132983e41",
       "source_sha256": "392f0c96a1f4bc80a2489d40870feaaed9e34f17de73b947833152e132983e41"
@@ -2548,8 +2628,8 @@
     },
     {
       "path": "src/ara/desktop/composition/_models.py",
-      "sha256": "8835d5d60dcfbe05beac46df9782f943170b0597bba611516d4e25e7bdc3ffb5",
-      "source_sha256": "8835d5d60dcfbe05beac46df9782f943170b0597bba611516d4e25e7bdc3ffb5"
+      "sha256": "8bf061045a51ad8ea42222acf7a35a0915c0be6c2b1c7957000f56198606315a",
+      "source_sha256": "8bf061045a51ad8ea42222acf7a35a0915c0be6c2b1c7957000f56198606315a"
     },
     {
       "path": "src/ara/desktop/composition/_registry.py",
@@ -2563,8 +2643,8 @@
     },
     {
       "path": "src/ara/desktop/composition/_wiring.py",
-      "sha256": "86ddab0b0560a7651f9b7d3924bac77e6d0ccc071120cba500c1f6f40b9acad0",
-      "source_sha256": "86ddab0b0560a7651f9b7d3924bac77e6d0ccc071120cba500c1f6f40b9acad0"
+      "sha256": "463c747e87a9a55f8987cdf037801b40eef18c63abc7b88aadfd369d67e091ed",
+      "source_sha256": "463c747e87a9a55f8987cdf037801b40eef18c63abc7b88aadfd369d67e091ed"
     },
     {
       "path": "src/ara/desktop/data_home/__init__.py",
@@ -2603,8 +2683,8 @@
     },
     {
       "path": "src/ara/desktop/database/_connection.py",
-      "sha256": "6267d9b8ef51b1b310550fcb4f3f79afebcd79ce4d3d8f0414e8ebbce3c07026",
-      "source_sha256": "6267d9b8ef51b1b310550fcb4f3f79afebcd79ce4d3d8f0414e8ebbce3c07026"
+      "sha256": "8ec461603d089385352069cfb934a897b82ba71a9662e589ac12ed7998cb1ea4",
+      "source_sha256": "8ec461603d089385352069cfb934a897b82ba71a9662e589ac12ed7998cb1ea4"
     },
     {
       "path": "src/ara/desktop/database/_models.py",
@@ -2738,13 +2818,13 @@
     },
     {
       "path": "src/ara/desktop/postgres_schema/_backend.py",
-      "sha256": "2e5dac29c622e16fd815c3277615be0d58b33618d135c82179cc3494422ecdb0",
-      "source_sha256": "2e5dac29c622e16fd815c3277615be0d58b33618d135c82179cc3494422ecdb0"
+      "sha256": "fe97600173fe0efb812a9db25c7ea73f9c28d1dfa12b5265062dae7a048b8d28",
+      "source_sha256": "fe97600173fe0efb812a9db25c7ea73f9c28d1dfa12b5265062dae7a048b8d28"
     },
     {
       "path": "src/ara/desktop/postgres_schema/_journal.py",
-      "sha256": "a1161a65cf6bc61b5c719ae957ed990c7b11407264ebd642a16b50c0682de048",
-      "source_sha256": "a1161a65cf6bc61b5c719ae957ed990c7b11407264ebd642a16b50c0682de048"
+      "sha256": "fd22bac283a50c8d194478b788227aad0826eb435dc592918ed92469e1b5bf13",
+      "source_sha256": "fd22bac283a50c8d194478b788227aad0826eb435dc592918ed92469e1b5bf13"
     },
     {
       "path": "src/ara/desktop/postgres_schema/_models.py",
@@ -2753,13 +2833,13 @@
     },
     {
       "path": "src/ara/desktop/postgres_schema/_runtime.py",
-      "sha256": "387c14d9493d3ec2b9863056de24592049809ea87ce2042a5582e9b62dde0b62",
-      "source_sha256": "387c14d9493d3ec2b9863056de24592049809ea87ce2042a5582e9b62dde0b62"
+      "sha256": "5c92b33a90e86f5a0fc2d99f881ef92da03e5ab40f1e9ec8d3fa7b41d6b815a0",
+      "source_sha256": "5c92b33a90e86f5a0fc2d99f881ef92da03e5ab40f1e9ec8d3fa7b41d6b815a0"
     },
     {
       "path": "src/ara/desktop/postgres_schema/_sql.py",
-      "sha256": "17f412690c9eaab3c2eaf8543da44f248b140255097e845b1fdfa95932fbbf78",
-      "source_sha256": "17f412690c9eaab3c2eaf8543da44f248b140255097e845b1fdfa95932fbbf78"
+      "sha256": "03d011cbb671aab2e82d6b7a0c14560229c33eb113c18a17ec4e52d92590e27c",
+      "source_sha256": "03d011cbb671aab2e82d6b7a0c14560229c33eb113c18a17ec4e52d92590e27c"
     },
     {
       "path": "src/ara/desktop/postgres_upgrade/__init__.py",
@@ -2768,13 +2848,13 @@
     },
     {
       "path": "src/ara/desktop/postgres_upgrade/_backend.py",
-      "sha256": "22be1d482f6f0103a44069d3e573a13e095b93fccc6be94536483dca106244e4",
-      "source_sha256": "22be1d482f6f0103a44069d3e573a13e095b93fccc6be94536483dca106244e4"
+      "sha256": "807fd1912d0923772080e5caa7539a7d2cb8db00a656b546226499383ecd90f0",
+      "source_sha256": "807fd1912d0923772080e5caa7539a7d2cb8db00a656b546226499383ecd90f0"
     },
     {
       "path": "src/ara/desktop/postgres_upgrade/_backup.py",
-      "sha256": "1bfd430d2351dcdb6280df301d911f250fd732a73ab9b2d97a376d83f93db5a5",
-      "source_sha256": "1bfd430d2351dcdb6280df301d911f250fd732a73ab9b2d97a376d83f93db5a5"
+      "sha256": "395bf11535e436faaab690a83b1a7124fd782931ad9ca7bb8f05a9baca7d8738",
+      "source_sha256": "395bf11535e436faaab690a83b1a7124fd782931ad9ca7bb8f05a9baca7d8738"
     },
     {
       "path": "src/ara/desktop/postgres_upgrade/_files.py",
@@ -2783,8 +2863,8 @@
     },
     {
       "path": "src/ara/desktop/postgres_upgrade/_journal.py",
-      "sha256": "f0bddd79af002fdd62b7134012c26c4d0d48aa5bb49beb463d1cddd79c58065b",
-      "source_sha256": "f0bddd79af002fdd62b7134012c26c4d0d48aa5bb49beb463d1cddd79c58065b"
+      "sha256": "19135424a81f67e67b77371d3db58c73b928b8a152617af035d7cd1565f2de06",
+      "source_sha256": "19135424a81f67e67b77371d3db58c73b928b8a152617af035d7cd1565f2de06"
     },
     {
       "path": "src/ara/desktop/postgres_upgrade/_models.py",
@@ -2793,13 +2873,13 @@
     },
     {
       "path": "src/ara/desktop/postgres_upgrade/_runtime.py",
-      "sha256": "3dde185a7b5eda4b31003cb3c82380bd3f2c2424a7e0c6e642ebef5fa945591f",
-      "source_sha256": "3dde185a7b5eda4b31003cb3c82380bd3f2c2424a7e0c6e642ebef5fa945591f"
+      "sha256": "d6f753d9f1157bfddc4a3754d98599dc6b7452843ca2db5cc42c9704bedfefee",
+      "source_sha256": "d6f753d9f1157bfddc4a3754d98599dc6b7452843ca2db5cc42c9704bedfefee"
     },
     {
       "path": "src/ara/desktop/postgres_upgrade/_sql.py",
-      "sha256": "2d2b60fd9166c723d593c47f007893e4417c1985eedb9ecee6c74b3df18ee9ff",
-      "source_sha256": "2d2b60fd9166c723d593c47f007893e4417c1985eedb9ecee6c74b3df18ee9ff"
+      "sha256": "6573631a6ad8d9b796a5b09ffe1db0cff3b44d4516ad0500aa6a2c3ca7b7f5fd",
+      "source_sha256": "6573631a6ad8d9b796a5b09ffe1db0cff3b44d4516ad0500aa6a2c3ca7b7f5fd"
     },
     {
       "path": "src/ara/desktop/server/__init__.py",
@@ -4438,8 +4518,8 @@
     },
     {
       "path": "src/ara/docx_analysis_worker/supervisor/database.py",
-      "sha256": "be24ce8b6c28ab40791ac86575d500df12353667708ab30117fc11f47c934216",
-      "source_sha256": "be24ce8b6c28ab40791ac86575d500df12353667708ab30117fc11f47c934216"
+      "sha256": "d64d42a7b89b1c40b1e4d95449b43d403500f27486292f87fcdd11ef63004fd8",
+      "source_sha256": "d64d42a7b89b1c40b1e4d95449b43d403500f27486292f87fcdd11ef63004fd8"
     },
     {
       "path": "src/ara/docx_analysis_worker/supervisor/dispatcher.py",
@@ -4902,6 +4982,31 @@
       "source_sha256": "99be71908cbc004746dcf0175e6a8ac9e98ba5247d4715f37a888182e3b731ae"
     },
     {
+      "path": "src/ara/docx_files/__init__.py",
+      "sha256": "9f450c33c8846566e8dbcc3208fae46d3cb47d610f13afffd0e4a5728887beca",
+      "source_sha256": "9f450c33c8846566e8dbcc3208fae46d3cb47d610f13afffd0e4a5728887beca"
+    },
+    {
+      "path": "src/ara/docx_files/coordinator.py",
+      "sha256": "7b3568e031dc68e71d4afd37f85fe406f55adfa1337e4efeb79911f89c0f009b",
+      "source_sha256": "7b3568e031dc68e71d4afd37f85fe406f55adfa1337e4efeb79911f89c0f009b"
+    },
+    {
+      "path": "src/ara/docx_files/native.py",
+      "sha256": "5ac9d12f92f19cd1aebcc5ea42c9261a188112892431dc26cf1d51e88f9e3d0d",
+      "source_sha256": "5ac9d12f92f19cd1aebcc5ea42c9261a188112892431dc26cf1d51e88f9e3d0d"
+    },
+    {
+      "path": "src/ara/docx_files/state.py",
+      "sha256": "3b0cd9987b2a2e63d56307a946787252d3dda97a71ad0f5a3932b446881e6216",
+      "source_sha256": "3b0cd9987b2a2e63d56307a946787252d3dda97a71ad0f5a3932b446881e6216"
+    },
+    {
+      "path": "src/ara/docx_files/storage.py",
+      "sha256": "2faec16b68a12b9f04e80d78995a3fb8bb2e99f9205d9cfd9af105fe7174a906",
+      "source_sha256": "2faec16b68a12b9f04e80d78995a3fb8bb2e99f9205d9cfd9af105fe7174a906"
+    },
+    {
       "path": "src/ara/docx_package/__init__.py",
       "sha256": "e4fe431948a231cfac6ee259c13592ac10d1bc575da9507225e1d10e30cdebc3",
       "source_sha256": "e4fe431948a231cfac6ee259c13592ac10d1bc575da9507225e1d10e30cdebc3"
@@ -5188,8 +5293,8 @@
     },
     {
       "path": "src/ara/docx_review_preferences/_reads.py",
-      "sha256": "ec23cc349b592ff15b948c703b3ae5e50bfea5673f32013a941ec06bd4d8f969",
-      "source_sha256": "ec23cc349b592ff15b948c703b3ae5e50bfea5673f32013a941ec06bd4d8f969"
+      "sha256": "f5fe4119163da6364d1bc12625e4bf1b1c5920e8d1b3642f85e2e4a4b671cf94",
+      "source_sha256": "f5fe4119163da6364d1bc12625e4bf1b1c5920e8d1b3642f85e2e4a4b671cf94"
     },
     {
       "path": "src/ara/docx_review_resolution/__init__.py",
@@ -5333,8 +5438,8 @@
     },
     {
       "path": "src/ara/models.py",
-      "sha256": "2264d046681b213d00c49a124be44a56aae3bf649b45ba9a6cb5e88b6d899e8c",
-      "source_sha256": "2264d046681b213d00c49a124be44a56aae3bf649b45ba9a6cb5e88b6d899e8c"
+      "sha256": "78a43d32515f63b3479c21512b508e2e3177d2385fbd356bf9a550ec0ad4ddac",
+      "source_sha256": "78a43d32515f63b3479c21512b508e2e3177d2385fbd356bf9a550ec0ad4ddac"
     },
     {
       "path": "src/ara/reviews/__init__.py",
@@ -5537,6 +5642,11 @@
       "source_sha256": "9ff77689c287bb054a50ae8c7655a0ce448d329e6490c3017d5e800942ea4d3d"
     },
     {
+      "path": "tests/acceptance/native_docx_file_cases.mjs",
+      "sha256": "3f1ab64bef52ccd2bee5ffea7fcb91345343f9f6be001d5d5fb5671f8f3b3b1c",
+      "source_sha256": "3f1ab64bef52ccd2bee5ffea7fcb91345343f9f6be001d5d5fb5671f8f3b3b1c"
+    },
+    {
       "path": "tests/acceptance/tabs_cases.mjs",
       "sha256": "784d3f4e686e4c0f874e17b944699382865475df317b09ccc4f048d14fd646a8",
       "source_sha256": "784d3f4e686e4c0f874e17b944699382865475df317b09ccc4f048d14fd646a8"
@@ -5670,6 +5780,11 @@
       "path": "tests/acceptance/test_desktop_database_supervisor.py",
       "sha256": "4db1c2e6f24ebe74c03ab0f9d17410739774b56108f8afd8e65a7e7246ee83db",
       "source_sha256": "4db1c2e6f24ebe74c03ab0f9d17410739774b56108f8afd8e65a7e7246ee83db"
+    },
+    {
+      "path": "tests/acceptance/test_desktop_file_schema.py",
+      "sha256": "f904db7474c87e7938eed140528433e9bd79c712724d77e88b0084584e56bf30",
+      "source_sha256": "f904db7474c87e7938eed140528433e9bd79c712724d77e88b0084584e56bf30"
     },
     {
       "path": "tests/acceptance/test_desktop_installation.py",
@@ -6157,6 +6272,11 @@
       "source_sha256": "7c124a85cc8257883cf0efe7e56d76b7bbd335ac441c04193d06934dc1ccad09"
     },
     {
+      "path": "tests/acceptance/test_docx_file_state.py",
+      "sha256": "3227b5066e5c405acd257d01d852e4836af331e7ae242b4cfc98f50ffdd6696f",
+      "source_sha256": "3227b5066e5c405acd257d01d852e4836af331e7ae242b4cfc98f50ffdd6696f"
+    },
+    {
       "path": "tests/acceptance/test_docx_final_view.py",
       "sha256": "c0ef0f801af0dafb2b050ce06ce2c1c9d68a8f5e855dffc9137488e92a949c4e",
       "source_sha256": "c0ef0f801af0dafb2b050ce06ce2c1c9d68a8f5e855dffc9137488e92a949c4e"
@@ -6195,6 +6315,11 @@
       "path": "tests/acceptance/test_docx_move_catalog.py",
       "sha256": "b583735d43ad1349dc5bc3c7f2b819403c33b102056b37dbb762be51751d7cd2",
       "source_sha256": "b583735d43ad1349dc5bc3c7f2b819403c33b102056b37dbb762be51751d7cd2"
+    },
+    {
+      "path": "tests/acceptance/test_docx_native_files.py",
+      "sha256": "02388c628936350b6711894d518f1986dcb8d9911a3827f478425f4eaa90a133",
+      "source_sha256": "02388c628936350b6711894d518f1986dcb8d9911a3827f478425f4eaa90a133"
     },
     {
       "path": "tests/acceptance/test_docx_note_catalog.py",
@@ -6293,8 +6418,8 @@
     },
     {
       "path": "tests/acceptance/test_docx_review_preferences_schema.py",
-      "sha256": "d9637356ea0dad172ea1bd69fad7e980784d02bbb6ddd557061f8b88c48045ab",
-      "source_sha256": "d9637356ea0dad172ea1bd69fad7e980784d02bbb6ddd557061f8b88c48045ab"
+      "sha256": "c2d5ae2bd18fbc7c0fb6761321475120ad1576677bf11a04cbc6d828e30b235f",
+      "source_sha256": "c2d5ae2bd18fbc7c0fb6761321475120ad1576677bf11a04cbc6d828e30b235f"
     },
     {
       "path": "tests/acceptance/test_docx_review_presentation.py",
@@ -6695,6 +6820,11 @@
       "path": "tests/acceptance/test_migrations.py",
       "sha256": "b9c1944d8b85e30a3feb130fa45046ad1c2e3377f3c1c2054ede4c5e7784bb37",
       "source_sha256": "b9c1944d8b85e30a3feb130fa45046ad1c2e3377f3c1c2054ede4c5e7784bb37"
+    },
+    {
+      "path": "tests/acceptance/test_native_docx_file.py",
+      "sha256": "ad079cef6c6ad387298efe01330571d8642a61436a9628c76b006e177a0b8354",
+      "source_sha256": "ad079cef6c6ad387298efe01330571d8642a61436a9628c76b006e177a0b8354"
     },
     {
       "path": "tests/acceptance/test_review_api.py",
@@ -7383,11 +7513,14 @@
     "ralph/tasks.json"
   ],
   "validation": {
-    "passed": 7009,
+    "passed": 7067,
     "skipped": 45,
     "subtests": 24,
     "exit_code": 0,
-    "workflow_seconds": 37.77,
+    "gate_seconds": 1536.73,
+    "excluded_prefixes": [
+      "sites/"
+    ],
     "real_model": false,
     "visual_word": false
   }

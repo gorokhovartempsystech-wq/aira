@@ -57,7 +57,7 @@ def verify(raw, source):
     )
     require(
         raw.execute("SELECT version_num FROM public.alembic_version LIMIT 2").fetchall()
-        == [("0013_docx_review_preferences",)],
+        == [(source._receipt.revision,)],
         "database_mismatch",
     )
     identity = source._identity

@@ -6,11 +6,20 @@ import threading
 
 from ara.desktop import _migration_gate
 
-from ._models import UpgradeError, UpgradeLimits, UpgradeTools, UpgradeView, mapped, require
+from ._models import (
+    SOURCE,
+    TARGET,
+    UpgradeError,
+    UpgradeLimits,
+    UpgradeTools,
+    UpgradeView,
+    mapped,
+    require,
+)
 
 
 class UpgradePreparation:
-    def __init__(self, home, cluster, *, migrations, tools, limits=None):
+    def __init__(self, home, cluster, *, migrations, tools, limits=None, target_revision=TARGET):
         from ara.desktop.data_home import DataHome
         from ara.desktop.postgres_cluster import ClusterRuntime
         from ara.desktop.postgres_cluster._models import checked_path
@@ -30,6 +39,12 @@ class UpgradePreparation:
         require(type(tools) is UpgradeTools, "validation_error")
         require(tools.dump.parent == cluster._tools.postgres.parent, "validation_error")
         require(limits is None or type(limits) is UpgradeLimits, "validation_error")
+        require(
+            type(target_revision) is str and target_revision in (TARGET, "0014_docx_file_states"),
+            "validation_error",
+        )
+        self._revision = target_revision
+        self._source = SOURCE if target_revision == TARGET else TARGET
         self._tools, self._limits = tools, limits or UpgradeLimits()
         self._home, self._cluster, self._migrations = home, cluster, migrations
         self._pid = os.getpid()

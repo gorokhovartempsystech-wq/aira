@@ -34,10 +34,11 @@ def digest(value):
 
 
 class Journal(Ownership):
-    def __init__(self, home, installation, cluster):
+    def __init__(self, home, installation, cluster, *, source=SOURCE, target=TARGET):
         super().__init__(Files(home.path("backups") / "schema", {"ready.json", "upgrade.json"}))
-        self.target = encode(record(installation, cluster, "ready"))
-        self.expected_source = record(installation, cluster, "ready") | {"revision": SOURCE}
+        self.source_revision, self.target_revision = source, target
+        self.target = encode(record(installation, cluster, "ready") | {"revision": target})
+        self.expected_source = record(installation, cluster, "ready") | {"revision": source}
         self.binding = {
             key: value
             for key, value in self.expected_source.items()
@@ -57,15 +58,15 @@ class Journal(Ownership):
         require(intent is None or temp is None)
         self.intent_raw = intent or temp
         if self.intent_raw is None:
-            require(revision == SOURCE and ".ready.json.pending" not in names)
+            require(revision == self.source_revision and ".ready.json.pending" not in names)
             self.source_proof(current)
             self.source = current
             return
         value = decode(self.intent_raw)
         expected = self.binding | dict(
             schema_version="aira-schema-upgrade/1",
-            source_revision=SOURCE,
-            target_revision=TARGET,
+            source_revision=self.source_revision,
+            target_revision=self.target_revision,
             backup_id=value.get("backup_id"),
             backup_sha256=value.get("backup_sha256"),
             backup_size=value.get("backup_size"),
@@ -85,8 +86,8 @@ class Journal(Ownership):
     def begin(self, backup):
         self.intent = self.binding | dict(
             schema_version="aira-schema-upgrade/1",
-            source_revision=SOURCE,
-            target_revision=TARGET,
+            source_revision=self.source_revision,
+            target_revision=self.target_revision,
             backup_id=backup["backup_id"],
             backup_sha256=backup["archive_sha256"],
             backup_size=backup["archive_size"],
@@ -101,10 +102,10 @@ class Journal(Ownership):
         require(sha256(source).hexdigest() == self.intent["source_ready_sha256"])
         self.source = source
         current, temp = self.fs.read("ready.json"), self.fs.read(".ready.json.pending")
-        if revision == SOURCE:
+        if revision == self.source_revision:
             require(current == source and temp is None)
         else:
-            require(revision == TARGET)
+            require(revision == self.target_revision)
             require(
                 (current == source and temp in (None, self.target))
                 or (current == self.target and temp in (None, source))

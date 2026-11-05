@@ -1,43 +1,49 @@
-# AIRA backend/client — complete fixture workflow
+# AIRA backend/client — native DOCX saving and recovery
 
-Source local commit: `dd17b01cd58ff5ea595f60dcf481b0495602429e` (D03-18A7, 5 November 2026).
-This updates the prior D03-18A2 checkpoint under app/backend. Code, tests, scripts
-and migrations are byte-identical to the local accepted snapshot. Documentation
-copies omit internal links and personal paths. Local data, archives, secrets,
-runtime binaries and unrelated uncommitted research/presentations are excluded.
+Source local commit: `a791363112dd2f768bd4a7752a9dfb9e89fc6aea` (D03-19A through D03-19D, 5 November 2026).
+The unrelated committed landing-page prototype under sites/ is excluded.
+Code, tests, scripts and migrations are byte-identical to the accepted snapshot.
+Documentation copies omit internal links and personal paths.
 
-## Verified behaviour
+## Result
 
-DOCX create/import → manual edits/undo/redo → tabs and autosave → close/restart and
-explicit recovery → save/check/poll/stop/retry → results/filters/hides → confirmed
-saved-copy export → reimport/reopen. Word processing timeouts and simultaneous-tab
-autosave coordination are fixed with unchanged old acceptance checks and timeouts.
+The existing fixture workflow now has trusted-host native DOCX saving adapters
+(Python and optional Node), durable file associations and frozen save intents,
+external-change detection, explicit Save As retargeting and recovery after restart.
+The explicit V14 desktop database profile supports fresh databases and a backed-up
+V13-to-V14 upgrade. The default remains V13; direct V12-to-V14 is rejected.
+No HTTP endpoint accepts filesystem paths.
 
-Full local gate: **7009 passed,45 skipped,24 subtests,exit0**, 1478.45s.
-Standalone whole workflow: **1 passed**,37.77s, three synthetic DOCX, two host
-lifetimes. Autosave uses advanced test clocks with real HTTP/DB checkpoint writes.
-The working database schema/revision/counts remained unchanged.
+Full local gate: **7067 passed, 45 skipped, 78 warnings, 24 subtests, exit 0**,
+1536.73 seconds. All 1036 source/test files and their inventory were verified
+unchanged across the final gate. Three synthetic DOCX files were saved, reopened
+and replaced through the Python adapter. Native Windows checks remain pending.
 
 ## Start here
 
 - [Workflow and frontend handoff](docs/docx-workflow-handoff.md)
 - [Current product scope](docs/current-product-scope.md)
-- [Final cycle result](docs/d03-18a7-result.md)
-- [File client](docs/docx-client-files.md) and [workspace](docs/docx-client-workspace.md)
+- [Native Python file integration](docs/d03-19c-native-files.md)
+- [Desktop V14 integration](docs/d03-19d-desktop-files.md)
+- [Final validation](docs/d03-19d-result.md)
 
-Run from this directory (app/backend):
+Run the existing fixture workflow from app/backend:
 
 ```bash
 bash scripts/check_docx_workflow.sh
 ```
 
-Requires the project Python environment, Node and local Postgres.app runtime;
-see the handoff for prerequisites. No global installation or existing-user-database
-migration is performed by the demo. Generated examples live in ignored .runtime.
-The standalone Ralph harness still requires monorepo Git-root adaptation before use.
+See the handoff for Python, Node and project-local PostgreSQL prerequisites.
+This command is the existing fixture workflow, not final UI/native-picker wiring.
+The standalone Ralph harness requires monorepo Git-root adaptation.
 
-This is an accepted client/backend fixture scenario, **not an end-user release**.
-Real ML pack/quality, Anya's final UI/native picker, Windows-native and visual Word
-acceptance, public TLS licensing and signed installers remain external gates.
-Model and external licensing transport in the demo are explicitly synthetic.
-The team's existing engine and frontend have not been replaced or automatically wired.
+## Remaining release gates
+
+This is not an end-user release. Final UI/file picker/IPC and shutdown coordination,
+real ML pack and quality, native Windows and visual Word acceptance, public TLS
+licensing and signed installers remain pending. The host must quiesce file writes
+before releasing its data-home ownership. Portable replacement cannot exclude an
+external writer racing after the final check. No ACL/xattr preservation is promised.
+The demonstration model and licensing transport are explicitly synthetic.
+Team files outside app/backend are preserved; secrets, user archives, runtime data
+and unrelated uncommitted work are excluded. No merge or deployment is performed.
