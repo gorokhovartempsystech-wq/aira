@@ -87,6 +87,10 @@ def admission(data, snapshot, execution, limits):
     # B1 validates the caller snapshot against the source before it is inspected.
     prepare, _ = review_functions(snapshot)
     prepare(data, snapshot, provenance=provenance(execution, UUID(int=0)), limits=limits.review)
+    _admission_budget(snapshot, limits)
+
+
+def _admission_budget(snapshot, limits):
     characters = sum(len(f.text) for f in snapshot.fragments)
     if type(snapshot) in (ListSnapshot, OutlineSnapshot, StyleListSnapshot, WordSnapshot):
         characters += sum(len(item.label) + (item.suffix != "nothing") for item in snapshot.lists)
@@ -95,6 +99,20 @@ def admission(data, snapshot, execution, limits):
         and characters <= limits.max_text_characters,
         "codec_limit_exceeded",
     )
+
+
+def _restored_word_request(snapshot, execution, attempt_id, limits):
+    # Private continuation only after restore_source rebuilt this snapshot from
+    # original bytes and compared the complete stored manifest. Detached callers
+    # still enter prepare_word_review and independently rebuild their source.
+    from ara.docx_analysis.review._models import checked as checked_review
+    from ara.docx_analysis.visible_word._shape import validate
+    from ara.docx_analysis.word_review._request import from_verified
+
+    p = provenance(execution, attempt_id)
+    review_limits = checked_review(p, limits.review)
+    validate(snapshot, review_limits.view)
+    return from_verified(snapshot, p, review_limits)
 
 
 def capture_source(data, snapshot, *, command, execution, limits=None):
@@ -197,7 +215,11 @@ def restore_source(source, *, limits=None):
             manifest.data == source.snapshot_data and manifest.sha256 == source.snapshot_sha256,
             "corrupt_record",
         )
-        admission(source.source_data, snapshot, execution, limits)
+        if type(snapshot) is WordSnapshot:
+            _restored_word_request(snapshot, execution, UUID(int=0), limits)
+            _admission_budget(snapshot, limits)
+        else:
+            admission(source.source_data, snapshot, execution, limits)
     except LOWER_ERRORS as e:
         lower_corruption(e)
     bound_command(command, snapshot, "corrupt_record")
@@ -208,13 +230,16 @@ def prepare_attempt(source, *, attempt_id, limits=None):
     limits = checked(limits)
     require(uuid(attempt_id))
     restored = restore_source(source, limits=limits)
-    prepare, _ = review_functions(restored.snapshot)
-    request = prepare(
-        source.source_data,
-        restored.snapshot,
-        provenance=provenance(restored.execution, attempt_id),
-        limits=limits.review,
-    )
+    if type(restored.snapshot) is WordSnapshot:
+        request = _restored_word_request(restored.snapshot, restored.execution, attempt_id, limits)
+    else:
+        prepare, _ = review_functions(restored.snapshot)
+        request = prepare(
+            source.source_data,
+            restored.snapshot,
+            provenance=provenance(restored.execution, attempt_id),
+            limits=limits.review,
+        )
     return AttemptBundle(attempt_id, request.wire_json, request.request_sha256)
 
 
@@ -284,6 +309,12 @@ def capture_result(source, attempt, *, reply, limits=None):
 
 
 def restore_result(source, attempt, result, *, limits=None):
+    from ._verification import restore_with_proof
+
+    return restore_with_proof(_restore_result, source, attempt, result, limits=limits)
+
+
+def _restore_result(source, attempt, result, *, limits=None):
     limits = checked(limits)
     require(type(result) is ResultBundle, "corrupt_record")
     check_source(source, limits)

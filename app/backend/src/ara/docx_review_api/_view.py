@@ -5,6 +5,7 @@ import json
 from sqlalchemy import select
 
 from ara.docx_analysis.presentation import present
+from ara.docx_analysis.storage_codec._verification import verification_scope
 from ara.docx_analysis_api import _wire as analysis_wire
 from ara.docx_analysis_runs import _storage
 from ara.docx_review_preferences import _reads
@@ -34,20 +35,22 @@ def get_review(runtime, document_id, run_id=None):
         summary, error_code = _storage.summary(row), row["error_code"]
         origin = _reads.records(session, document_id, summary.run_id, row["result_sha256"])
         inputs = load_inputs(session, preferences, origin)
-    resolution = resolve(inputs)
-    try:
-        verified = present(
-            origin.source,
-            origin.attempt,
-            origin.result,
-            disabled_types=preferences.disabled_types,
-            show_questions=preferences.show_questions,
-            hidden_keys=resolution.hidden_keys,
-            show_hidden=preferences.show_hidden,
-        )
-        view = json.loads(verified.wire_json)
-    except Exception:
-        fail("storage_error")
+    records = tuple((o.source, o.attempt, o.result) for o in (inputs.target, *inputs.origins))
+    with verification_scope(records):
+        resolution = resolve(inputs)
+        try:
+            verified = present(
+                origin.source,
+                origin.attempt,
+                origin.result,
+                disabled_types=preferences.disabled_types,
+                show_questions=preferences.show_questions,
+                hidden_keys=resolution.hidden_keys,
+                show_hidden=preferences.show_hidden,
+            )
+            view = json.loads(verified.wire_json)
+        except Exception:
+            fail("storage_error")
     with _reads.transaction(runtime, document_id) as session:
         if _reads.snapshot(session, document_id).revision != preferences.revision:
             fail("preferences_conflict")

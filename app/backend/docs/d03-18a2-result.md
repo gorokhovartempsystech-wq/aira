@@ -1,4 +1,8 @@
-# D03-18A2 — implementation saved; full acceptance remains open
+# D03-18A2 — full acceptance closed after stability fix
+
+5 November update: [D03-18A2-S](d03-18a2-stability-result.md) fixed repeated Word
+verification within one review request. Full gate: 6938 passed, 45 skipped,
+24 subtests, exit 0. The original checkpoint record below is historical.
 
 5 November2026. Work stopped at the user's explicit request. Baseline4b1f1ce,
 acceptance freezeabb6a9c. Do not start A3 or claim this cycle fully accepted.

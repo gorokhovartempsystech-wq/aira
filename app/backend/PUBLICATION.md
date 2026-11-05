@@ -1,29 +1,43 @@
-# AIRA backend checkpoint — 5 November 2026
+# AIRA backend/client — complete fixture workflow
 
-Source local commit: 456c7043a5b1564c508ae647fbe72920b4ae3096. Code/tests/migrations are byte-identical to this snapshot.
-Documentation copies omit internal links and personal machine paths. Local archives, databases,
-secrets, runtime binaries and uncommitted research/presentation artifacts are excluded.
+Source local commit: `dd17b01cd58ff5ea595f60dcf481b0495602429e` (D03-18A7, 5 November 2026).
+This updates the prior D03-18A2 checkpoint under app/backend. Code, tests, scripts
+and migrations are byte-identical to the local accepted snapshot. Documentation
+copies omit internal links and personal paths. Local data, archives, secrets,
+runtime binaries and unrelated uncommitted research/presentations are excluded.
 
-## Current state
+## Verified behaviour
 
-Local DOCX editor/storage, license server/client, owned macOS runtime, fixture analysis,
-review/filter/hide backend and client command/autosave/HTTP modules are included.
-Real model package and final frontend integration are still pending. This is not a release.
+DOCX create/import → manual edits/undo/redo → tabs and autosave → close/restart and
+explicit recovery → save/check/poll/stop/retry → results/filters/hides → confirmed
+saved-copy export → reimport/reopen. Word processing timeouts and simultaneous-tab
+autosave coordination are fixed with unchanged old acceptance checks and timeouts.
 
-A1 full gate:6897 passed,45 skipped,24 subtests. Latest A2 targeted regression:196 passed,
-including37 new cases. Two full A2 attempts hit an existing Word review ReadTimeout after
-retry; isolated repetition passed, but full acceptance remains OPEN. No checks were weakened.
-See docs/d03-18a2-result.md and docs/development-queue.md for the stopping point and next work.
+Full local gate: **7009 passed,45 skipped,24 subtests,exit0**, 1478.45s.
+Standalone whole workflow: **1 passed**,37.77s, three synthetic DOCX, two host
+lifetimes. Autosave uses advanced test clocks with real HTTP/DB checkpoint writes.
+The working database schema/revision/counts remained unchanged.
 
 ## Start here
 
-- docs/current-product-scope.md
-- docs/desktop-composition.md and docs/desktop-build.md
-- docs/docx-client-session.md and docs/docx-client-transport.md
-- docs/docx-editor-api.md and docs/docx-review-api.md
+- [Workflow and frontend handoff](docs/docx-workflow-handoff.md)
+- [Current product scope](docs/current-product-scope.md)
+- [Final cycle result](docs/d03-18a7-result.md)
+- [File client](docs/docx-client-files.md) and [workspace](docs/docx-client-workspace.md)
 
-Run repository commands from app/backend. Prepare dependencies using scripts/bootstrap.sh;
-full checks require the local PostgreSQL setup in docs/local-postgres.md. No automatic
-migration of an existing user database is authorized by this snapshot. The copied Ralph
-harness uses standalone-project assumptions; monorepo Git-root adaptation is not verified.
-The team's existing engine and frontend remain separate; this upload does not claim their integration.
+Run from this directory (app/backend):
+
+```bash
+bash scripts/check_docx_workflow.sh
+```
+
+Requires the project Python environment, Node and local Postgres.app runtime;
+see the handoff for prerequisites. No global installation or existing-user-database
+migration is performed by the demo. Generated examples live in ignored .runtime.
+The standalone Ralph harness still requires monorepo Git-root adaptation before use.
+
+This is an accepted client/backend fixture scenario, **not an end-user release**.
+Real ML pack/quality, Anya's final UI/native picker, Windows-native and visual Word
+acceptance, public TLS licensing and signed installers remain external gates.
+Model and external licensing transport in the demo are explicitly synthetic.
+The team's existing engine and frontend have not been replaced or automatically wired.
