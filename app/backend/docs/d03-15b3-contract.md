@@ -1,0 +1,25 @@
+# D03-15B3 — single-paragraph ввод и typing format
+
+31 октября 2026, после dc53fe7. Sol 6.1 High, F05/F11; автономное продолжение разрешено Никитой. Один bounded subcycle: collapsed text insertion и сохранение direct run formatting для будущего набора после Enter. DOM/IME bindings, selected-range replacement, multiline paste/soft break и durable recovery — отдельные задачи.
+
+## API и формат
+
+EditorSession.insert_text(text: str, *, expected_revision: int) -> прежний EditorSnapshot. Revision проверяется первой; далее collapsed selection по правилам B2. text — настоящий str, XML-safe как D03-11, без TAB/LF/CR; максимум 100000 Unicode code points на вызов (технический предел, не максимальный размер документа). Invalid type/control/surrogate → EditorError invalid_input; превышение → новый content-free text_limit_exceeded. Empty text — no-op, не меняет caret/ID/redo/историю, может читаться на protected документе. Настоящая вставка сохраняет все прежние package/limits/protection/signature/global/target gates D03-14.
+
+Текст вставляется точно в paragraph code-point offset, без пробелов/normalization/разделителей. Caret после вставки collapsed в offset+len(text), affinity left, чтобы последующий набор продолжал только что введённое оформление, а не переключался на правый соседний run. Одна вставка/IME unit — одна snapshot position; grouping последовательных DOM input events остаётся будущим UI/controller policy.
+
+Формат нового run берётся у позиции курсора, не вычисляется из CSS или guessed fonts. Внутри непустого atom — его run. На границе affinity left выбирает последний предшествующий видимый atom, right — первый следующий (включая zero-width span); при отсутствии стороны используется другая. Если нет spans, выбрать существующий пустой run (left: последний, right: первый). Если runs вообще нет, использовать paragraph-mark rPr из pPr. Если свойства отсутствуют — обычное наследование paragraph style. Разные rPr соседей не смешивать. Source rPr и разрешённые nonunique rsid attrs копируются из выбранной run-оболочки; namespace scope сохраняется. У fallback pPr-оболочки переносить только xmlns, переименовав контейнер в r. Paragraph identity attrs не клонируются.
+
+Использовать прежний bounded lexical Tree/guards/divide для сохранения существующих atoms/runs по обе стороны курсора. Допустимо раздвоить только разрезаемый run/t, не flatten весь paragraph в plain text. Вставить новый native r/t с xml:space=preserve и безопасным escaping; свойства нового run скопированы дословно. Output text/порядок всех blocks проверяются; bytes вне выбранного p и все другие ZIP parts/metadata прежние. Корректно UTF8/UTF16/Strict/local namespaces. Output собирается с ограничением размера до окончательной упаковки.
+
+## Typing format после Enter
+
+Расширение B2: если результат Enter — пустой p с тем же прямым style_id и numbering_id/level, восстановить выбранный до команды direct typing format в одном пустом styled run этого p. Формат выбирается с учётом прежней affinity тем же алгоритмом. Пустые разрешённые typing runs нового p заменяются одним seed run; видимый текст не удаляется. Если next-style или выход из списка поменял style/list identity, оставить сброшенный B2 формат и не переносить старое rPr. Если правый результат непустой, его formatting не менять.
+
+Seed является частью candidate DOCX, не отдельным скрытым mutable font-state: exact snapshots автоматически сохраняют его на undo/redo. Enter+seed — один revision/frame, промежуточный результат не публикуется. Не менять публичные поля EditorSnapshot/Caret/Selection и не удерживать дополнительные полные packages вне core budgets. Все ошибки подготовки нового текста/seed/reply/лимита сохраняют целиком прежнее состояние. Typing format toolbar без ввода здесь не добавляется.
+
+## Пути и приёмка
+
+Freeze до кода: tests/acceptance/test_docx_editor_typing.py и этот контракт; builders проверить на прежнем source projector. Source: новый editor/_typing.py, editor/_session.py (insert_text и подготовка seed перед принятием Enter), editor/_models.py (один код ошибки). Старые core/boundaries/formatting/range/storage/HTTP/UI/DTO/tests/runner/tasks/progress/dependencies не менять. Дополнительные cases в уже собираемой tests/docx_session/test_typing_*.py. Отчёт docs/d03-15b3-result.md. Все операции/import без I/O/env/secrets/logging, synthetic данные, локальный commit разрешён, push нет.
+
+Acceptance: new blank/selfclosing/no-run paragraph, insert в середине/краях, exact text/Unicode/escaping/spaces; inline mixed formatting/affinity/rPr/style references и local xmlns; TAB/br рядом с caret; styled empty seed после Enter, next-style reset, exact undo/redo/reply rollback/budgets; empty no-op сохраняет redo; malformed text/limits/stale/range/protected/opaque безопасно; package preservation и inert operation. Full bash scripts/check.sh, baseline БД. QA bold/italic текст → Enter → набор в новом абзаце и Heading→Normal→набор; Word export через bundled renderer, осмотр всех страниц. После коммита продолжать следующую отдельную функцию на текущем режиме при достаточном качестве; готовность paste/recovery/UI не следует из этого цикла.

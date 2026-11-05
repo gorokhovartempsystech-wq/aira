@@ -1,0 +1,440 @@
+{
+  "version": 1,
+  "tasks": [
+    {
+      "id": "T01-01",
+      "title": "Каркас FastAPI и проверка работоспособности",
+      "prompt": "Реализуй фабрику create_app() в src/ara/app.py, возвращающую FastAPI, и GET /health с HTTP 200 и JSON ровно {\"status\":\"ok\"}. Используй уже подготовленные зависимости и конфигурацию pyproject.toml. Добавь тесты через FastAPI TestClient в tests/app. Импорт модулей и создание приложения должны работать без секретов, чтения ~/secrets.env, сети и базы данных. Не добавляй хранилище, авторизацию, endpoints документов, ML, Confluence или новые зависимости. Редактируй только src/ara и tests/app. Выполни bash scripts/check.sh и сообщи результат; не меняй проверки, task status или журнал.",
+      "acceptance_criteria": [
+        "Из src/ara/app.py импортируется create_app, которая создаёт FastAPI-приложение.",
+        "TestClient для созданного приложения получает GET /health: HTTP 200, JSON ровно {\"status\":\"ok\"}.",
+        "Импорт модулей и создание приложения не загружают секреты, не читают локальную конфигурацию и не вызывают внешние сервисы или БД.",
+        "В tests/app есть содержательная проверка маршрута; общая команда bash scripts/check.sh успешно выполнена.",
+        "Продуктовые изменения ограничены src/ara и tests/app; зависимости, runner и критерии не изменены."
+      ],
+      "check_command": [
+        "bash",
+        "scripts/check.sh"
+      ],
+      "status": "completed",
+      "depends_on": [],
+      "allowed_paths": [
+        "src/ara/**",
+        "tests/app/**"
+      ]
+    },
+    {
+      "id": "T01-02",
+      "title": "PostgreSQL, конфигурация и начальные миграции",
+      "prompt": "После отдельного выбора этой задачи добавь явную загрузку настроек, подключение к подготовленной PostgreSQL и миграции User, Project, Document, DocumentVersion по рабочей спецификации. Изучай разрешённую конфигурацию и доступность БД без дампов секретов. Не создавай .env, не устанавливай системные сервисы и не заменяй PostgreSQL другой БД. Если PostgreSQL или согласованный доступ отсутствует, зафиксируй блокер. Модули остаются инертными при импорте; обращения к БД запускаются явно. Дополнительные зависимости и расширение проверок согласуются вне внутреннего цикла до его старта. До реализации прочитай docs/t01-02-contract.md — там зафиксированы интерфейсы, поля и ограничения независимой приёмки. Реализуй их без расширения задачи. PostgreSQL уже запущен; доступ через peer Unix socket описан в docs/local-postgres.md. Общая проверка создаёт и удаляет только собственные одноразовые базы ara_check_<uuid>; ara_dev/ara_test не очищай. Импорт ara.app и /health оставь автономными. При sandbox-отказе доступа к локальной PostgreSQL используй штатный запрос разрешения, не обходы. При невозможности выполнить проверку верни blocker.",
+      "acceptance_criteria": [
+        "Миграции проходят на пустой изолированной тестовой PostgreSQL и повторный upgrade не изменяет схему.",
+        "Сущности и внешние ключи соответствуют спецификации; пользователь и проект задают будущую границу доступа.",
+        "Отсутствие обязательной настройки даёт объяснимую ошибку без вывода секретов; import не подключается к БД.",
+        "Есть проверка миграций на настоящей PostgreSQL; bash scripts/check.sh проходит вместе с проверками T01-01."
+      ],
+      "check_command": [
+        "bash",
+        "scripts/check.sh"
+      ],
+      "status": "completed",
+      "depends_on": [
+        "T01-01"
+      ],
+      "allowed_paths": [
+        "src/ara/config.py",
+        "src/ara/db.py",
+        "src/ara/models.py",
+        "migrations/**",
+        "alembic.ini",
+        "tests/db/**"
+      ]
+    },
+    {
+      "id": "T01-03",
+      "title": "Создание и чтение документа",
+      "prompt": "После отдельного выбора этой задачи реализуй POST /documents, GET /documents и GET /documents/{id}/versions/{version_id} по спецификации. Используй явного тестового пользователя только в разрешённом локальном режиме; идентификатор владельца не принимается как доверенное поле запроса. Сохраняй документ с первой неизменяемой версией в PostgreSQL и возвращай исходный Markdown без потери содержимого. Не добавляй ML, фоновую очередь, UI или интеграцию. Расширение проверок под новую задачу подготавливается до запуска внутреннего цикла. Перед реализацией прочитай docs/t01-03-contract.md с точным HTTP/Python контрактом и приёмкой. PostgreSQL уже работает; проверка использует собственные одноразовые базы. Сохрани прежние проверки автономного create_app()/health без импорта DB-библиотек: подключай роутер только при явном DocumentRuntime. Реализуй ограниченное дословное разбиение Markdown и явную фабрику локального запуска по контракту. Для подключения к сокету используй штатный запрос разрешения; не обходи ограничения. Не меняй модели, миграции, config/db, проверки приёмки или инструкции.",
+      "acceptance_criteria": [
+        "Созданный документ и первая версия читаются из PostgreSQL после пересоздания приложения.",
+        "Текст с заголовком, таблицей и fenced code block возвращается без потерь.",
+        "Владелец берётся из серверного контекста пользователя; его нельзя подменить телом запроса.",
+        "Запрос неизвестного документа возвращает согласованную ошибку без раскрытия посторонних данных; общая команда проверки проходит."
+      ],
+      "check_command": [
+        "bash",
+        "scripts/check.sh"
+      ],
+      "status": "completed",
+      "depends_on": [
+        "T01-02"
+      ],
+      "allowed_paths": [
+        "src/ara/app.py",
+        "src/ara/documents/**",
+        "src/ara/local.py",
+        "tests/documents/**"
+      ]
+    },
+    {
+      "id": "T01-04",
+      "title": "Версии документа и изоляция владельцев",
+      "prompt": "После отдельного выбора этой задачи дополни слой хранения неизменяемыми версиями и изоляцией двух пользователей. Создание следующей версии должно сохранять предыдущую и связь с родителем; этот этап не добавляет Merge/apply endpoint, который относится к T03 общего бэклога. Заверши явный локальный dev-auth режим, его запрет в пилотной конфигурации и GET /me, показывающий режим окружения. Не называй dev-auth настоящей авторизацией. Проверь границы доступа к уже реализованным чтению и списку документов. Перед реализацией прочитай docs/t01-04-contract.md: он задаёт публичный append_version, транзакцию с проверкой ожидаемой версии, GET /me и запрет локального HTTP-runtime при пилотном окружении. PostgreSQL уже запущен; независимая приёмка использует новые одноразовые базы. Сохрани инертный health-only путь и все проверки T01-01/02/03. Разрешены только заданные пути; не меняй модели, миграции, приёмку, зависимости, launcher или runner. При sandbox-блокировке локального сокета используй штатное разрешение, не обход. Не добавляй новые продуктовые маршруты кроме GET /me и не переходи к T02.",
+      "acceptance_criteria": [
+        "Создание новой версии в слое хранения не меняет ранее сохранённую версию и сохраняет родительскую связь.",
+        "Два тестовых пользователя получают только собственные документы и версии; подмена ID не открывает чужие данные.",
+        "Dev-auth явно обозначен, недоступен в пилотной конфигурации, локальный запуск ограничен loopback.",
+        "GET /me возвращает текущего пользователя и режим; bash scripts/check.sh проходит с проверками версий и доступа."
+      ],
+      "check_command": [
+        "bash",
+        "scripts/check.sh"
+      ],
+      "status": "completed",
+      "depends_on": [
+        "T01-03"
+      ],
+      "allowed_paths": [
+        "src/ara/documents/**",
+        "src/ara/app.py",
+        "src/ara/local.py",
+        "tests/documents/**"
+      ]
+    },
+    {
+      "id": "T02-01",
+      "title": "Исполняемый контракт Linting и Merge",
+      "prompt": "Реализуй только T02-01 по docs/t02-01-contract.md и contracts/README.md: строгие Pydantic-модели, безопасную validate_request/validate_result, проверки ссылок, coverage, outcomes и DAG, признак неполноты и JSON Schema. Все уточнения записаны в контракте до запуска. Не добавляй API, БД, worker, ML или новые зависимости. Примеры и независимая приёмка неизменны. PostgreSQL уже работает для прежних проверок; при блокировке сокета используй штатное разрешение. Выполни bash scripts/check.sh; не меняй задачи, runner, критерии и статусы.",
+      "acceptance_criteria": [
+        "Оба запроса и результата из contracts/examples проходят строгие модели 0.1.0 без изменения исходных данных; JSON Schema совпадает с моделями.",
+        "Несуществующие evidence/quotes/targets, неправильные версии, coverage, outcomes и циклы зависимостей отклоняются безопасно; допустимые альтернативы и пространства ID сохраняются.",
+        "Неполнота вычисляется backend из skipped и данных импортера; модель не может выдать пропущенное новое требование за обработанное.",
+        "Импорты и валидация не используют файлы, секреты, сеть или БД; независимые негативные проверки и вся bash scripts/check.sh проходят."
+      ],
+      "check_command": [
+        "bash",
+        "scripts/check.sh"
+      ],
+      "status": "completed",
+      "depends_on": [
+        "T01-04"
+      ],
+      "allowed_paths": [
+        "src/ara/analysis_contract/**",
+        "tests/analysis_contract/**",
+        "contracts/schemas/**"
+      ]
+    },
+    {
+      "id": "T02-02",
+      "title": "Сохраняемые задания анализа и API",
+      "prompt": "Реализуй T02-02 строго по docs/t02-02-contract.md и существующему контракту 0.1.0: ContextRevision/AnalysisRun, миграцию0002, POST /documents/{document_id}/runs и GET /runs/{run_id}, immutable request snapshot, owner isolation и конкурентно безопасную идемпотентность. Сохраняй только queued с execution_mode=fixture, worker/анализ не запускай. Сохрани предыдущую миграцию и всю функциональность T01/T02-01. PostgreSQL запущен, тесты создают собственные одноразовые базы; для сокета используй штатное разрешение. Не меняй независимую приёмку, контракт, задачи, runner, зависимости/launcher. Выполни bash scripts/check.sh, не переходи к T02-03.",
+      "acceptance_criteria": [
+        "Задание с явной версией документа и контекста сохраняется в PostgreSQL и читается после перезапуска.",
+        "Одинаковый ключ создания с тем же телом возвращает прежнее задание, с другим телом даёт конфликт.",
+        "Два пользователя изолированы; API и миграции проходят независимую проверку на PostgreSQL."
+      ],
+      "check_command": [
+        "bash",
+        "scripts/check.sh"
+      ],
+      "status": "completed",
+      "depends_on": [
+        "T02-01"
+      ],
+      "allowed_paths": [
+        "src/ara/runs/**",
+        "src/ara/models.py",
+        "src/ara/app.py",
+        "migrations/versions/0002_analysis_runs.py",
+        "tests/runs/**"
+      ]
+    },
+    {
+      "id": "T02-03",
+      "title": "Worker и явно обозначенный тестовый адаптер",
+      "prompt": "Реализуй T02-03 строго по docs/t02-03-contract.md: отдельный worker PostgreSQL, lease/attempt/deadline и ограниченные повторы, чистый fixture-адаптер и сохранение валидированного результата. Расширь существующий RunResponse, добавь только миграцию 0003 и явный локальный launcher. Анализ реальным ML не подключай. Используй сохранённый request/omission flag, свежий DB clock и проверку доступа; адаптер вне транзакции. Сохрани прежние миграции и всю функциональность T01/T02. PostgreSQL запущен; тесты используют собственные базы, для сокета допускается штатное разрешение. Не меняй независимую приёмку, контракт, задачи/runner/зависимости. Выполни bash scripts/check.sh и остановись на T02-03.",
+      "acceptance_criteria": [
+        "Задание проходит queued/running/succeeded либо failed; результат и execution_mode=fixture сохраняются после перезапуска.",
+        "Неактуальная попытка worker не перезаписывает результат, падение и истечение lease допускают ограниченный повтор без двух результатов.",
+        "Невалидный ответ не становится succeeded; needs_clarification остаётся успешным смысловым результатом.",
+        "Независимые проверки worker/адаптера и общий gate проходят; реальный ML не заявляется."
+      ],
+      "check_command": [
+        "bash",
+        "scripts/check.sh"
+      ],
+      "status": "completed",
+      "depends_on": [
+        "T02-02"
+      ],
+      "allowed_paths": [
+        "src/ara/worker/**",
+        "src/ara/runs/**",
+        "src/ara/models.py",
+        "migrations/versions/0003_worker_execution.py",
+        "scripts/worker.sh",
+        "scripts/serve_worker.py",
+        "tests/worker/**"
+      ]
+    },
+    {
+      "id": "T03-01",
+      "title": "Неизменяемые ревизии решений пользователя",
+      "prompt": "Реализуй только T03-01 строго по docs/t03-01-contract.md: ReviewRevision и миграцию 0004, GET/PUT /runs/{run_id}/review, полный снимок решений и точные текстовые edits, CAS и идемпотентный повтор через родителя. Проверь исходный сохранённый результат и актуальный доступ; не изменяй analysis result, context или версии документа. Accepted — черновик намерения; preview, проверка применимости и apply относятся к следующим циклам. PostgreSQL уже запущен; независимая приёмка создаёт собственные одноразовые базы. При отказе доступа к сокету используй штатное разрешение. Сохрани все старые поля/контракты/миграции. Импорты и health-only путь инертны. Не меняй независимые проверки, контракт, задачи/статусы/журнал, runner или зависимости. Выполни bash scripts/check.sh и остановись после T03-01.",
+      "acceptance_criteria": [
+        "GET возвращает виртуальный pending-снимок без записи либо текущую/историческую неизменяемую ревизию; PUT сохраняет полный набор решений и точный текст edits, доступный после нового engine.",
+        "Строгая форма, ссылки и лимиты проверены; исходные request/result/context/version/attempt не меняются. Блокирующие вопросы и непринятые зависимости не исчезают при accepted.",
+        "Владелец и проект проверяются под блокировками; чужие runs/история скрыты, смена result fingerprint выявляется, устаревшая база не переопределяется.",
+        "Конкурентные PUT с одним родителем дают одну ревизию или конфликт; повтор возвращает прежнего ребёнка даже после следующих ревизий. Сбой записи/commit не оставляет частичного состояния.",
+        "Новая миграция 0004 сохраняет прежние данные, обеспечивает ограничения владельца/родителя/цепочки; независимая PostgreSQL-приёмка и bash scripts/check.sh проходят."
+      ],
+      "check_command": [
+        "bash",
+        "scripts/check.sh"
+      ],
+      "status": "completed",
+      "depends_on": [
+        "T02-03"
+      ],
+      "allowed_paths": [
+        "src/ara/reviews/**",
+        "src/ara/models.py",
+        "src/ara/app.py",
+        "migrations/versions/0004_review_revisions.py",
+        "tests/reviews/**"
+      ]
+    },
+    {
+      "id": "D01-01",
+      "title": "Сохранение и восстановление локального черновика",
+      "prompt": "Сначала прочитай docs/current-product-scope.md. Реализуй только D01-01 по docs/d01-01-contract.md: часть F05/F12, Python API ara.drafts.read_draft/save_draft/DraftSnapshot, текущий DocumentDraft и миграцию 0005 поверх0004. Сохраняй точный полный текст, включая пустой и длиннее миллиона символов; CAS, доступ и rollback обязательны. Никаких HTTP/UI/таймера/анализа/публикации версии, Merge/preview/apply или замены PostgreSQL. PostgreSQL запущена штатно, старый gate468+24 прошёл; для локального сокета используй обычное разрешение при необходимости. Независимая приёмка использует только свои одноразовые базы. Разрешены только указанные пути; в models.py добавить лишь новую модель и нужные импорты. Не меняй старые модели/миграции, независимые тесты, контракт, инструкции, runner/prompt, зависимости, задачи/статусы/журнал. Не исследуй output/, .artifact-build/ или рабочий архив. Сохрани существующие незакоммиченные документы других работ. Выполни bash scripts/check.sh и остановись после D01-01.",
+      "acceptance_criteria": [
+        "read_draft возвращает None без записи либо detached frozen Snapshot ровно из пяти полей; save/read сохраняют дословный текст после пересоздания engine, включая пустой, Unicode/CRLF и строку длиннее старого лимита версий.",
+        "Черновик обновляется отдельно от восьми прежних таблиц; старая и явно изменённая собственная базовая версия допустимы, чужая версия запрещена. Аргументы строго валидируются без нормализации.",
+        "Актуальный доступ документа проверяется и удерживается до commit для чтения и записи. Передача проекта/перемещение документа соблюдает существующие границы доступа.",
+        "CAS сериализует первые INSERT и UPDATE: одно из двух сохранений от одной ревизии успешно, другое получает безопасный конфликт, даже при одинаковом тексте. Повтор со старой ревизией не затирает данные.",
+        "Отказ INSERT/UPDATE/commit полностью откатывается, сообщения безопасны; импорты инертны. Новая миграция сохраняет старую схему и данные и обеспечивает PK/FK/CHECK согласно контракту.",
+        "Независимая приёмка на PostgreSQL и полный bash scripts/check.sh проходят. Не добавлены UI, endpoints, реальный ML или функции старого Merge."
+      ],
+      "check_command": [
+        "bash",
+        "scripts/check.sh"
+      ],
+      "status": "completed",
+      "depends_on": [
+        "T03-01"
+      ],
+      "allowed_paths": [
+        "src/ara/drafts/**",
+        "src/ara/models.py",
+        "migrations/versions/0005_document_drafts.py",
+        "tests/drafts/**"
+      ]
+    },
+    {
+      "id": "D01-02",
+      "title": "HTTP API чтения и сохранения локального черновика",
+      "prompt": "Сначала прочитай docs/current-product-scope.md, затем docs/d01-02-contract.md. Реализуй только D01-02: GET/PUT /documents/{document_id}/draft поверх неизменённого Python-сервиса D01-01, только при явном local DocumentRuntime. Строгая HTTP-форма, exact text, безопасные ошибки и документированный OpenAPI обязательны. Учитывай строгие UUID Python против строк JSON и автоматическую проверку инертных импортов всех модулей drafts. Не добавляй SQL или миграции, пустой новый документ, UI, таймер, ML, Merge/preview/apply, аккаунты или интеграции. PostgreSQL запущена штатно; исходный gate546+24 прошёл. При необходимости используй обычный запрос разрешения для локального сокета. Независимая приёмка использует только собственные одноразовые БД. В app.py разрешено только подключение нового router при явном runtime. Не меняй старые drafts storage/schemas/__init__, другие сервисы, модели, миграции, независимые тесты, зависимости, контракт, инструкции, runner/prompt, задачи/статусы/журнал. Не исследуй output/, .artifact-build/ и рабочий архив. Сохрани чужие незакоммиченные документы. Выполни bash scripts/check.sh и остановись после D01-02.",
+      "acceptance_criteria": [
+        "GET/PUT черновика устанавливаются только при явном local runtime; старые маршруты, health-only приложение, инертные импорты и отсутствие БД при health/OpenAPI сохраняются. OpenAPI отражает реальный запрос, nullable GET, snapshot и безопасные error-envelope.",
+        "GET доступного документа без черновика возвращает 200 JSON null без записи; PUT создаёт или обновляет черновик и возвращает 200 с пятью полями зафиксированного snapshot. Данные восстанавливаются после нового engine.",
+        "HTTP принимает ровно три обязательных поля; ревизия является строгим целым, UUID корректно преобразуются для сервиса, текст сохраняется дословно включая пустой и длиннее миллиона символов. Malformed JSON/UTF-8 и неверные поля возвращают безопасный422 до доступа к БД.",
+        "Доступ определяется server-owned runtime, а не заголовками/query/body. Чужой документ или база дают общий404. Старая и явно сменённая собственная база допускаются без изменения сохранённых версий и остальных прежних таблиц.",
+        "Существующий CAS соблюдён через HTTP: устаревший повтор даёт409, конкурентные PUT имеют одного победителя. Ошибки хранения/commit/повреждённой строки возвращают безопасные500/503 без частичного сохранения; request_id серверный и уникален.",
+        "Полный bash scripts/check.sh и независимая PostgreSQL-приёмка проходят. Код D01-01, старая схема и контракты не ослаблены; UI, таймер, новые пустые документы и анализ не добавлены."
+      ],
+      "check_command": [
+        "bash",
+        "scripts/check.sh"
+      ],
+      "status": "completed",
+      "depends_on": [
+        "D01-01"
+      ],
+      "allowed_paths": [
+        "src/ara/drafts/api.py",
+        "src/ara/drafts/http_schemas.py",
+        "src/ara/app.py",
+        "tests/drafts/http/**"
+      ]
+    },
+    {
+      "id": "D02-01",
+      "title": "Preserve original DOCX packages and export without changes",
+      "prompt": "Read docs/current-product-scope.md and docs/d02-01-contract.md first. Implement only D02-01: pure ara.docx_package open_docx(bytes), immutable entries/relationships inventory, DocxLimits/DocxError, and byte-identical export_original. Original bytes are authoritative; do not rebuild XML/ZIP. Validate package structure, main relationship/content type, internal targets, bounded sizes and CRC. Preserve opaque parts and never load External relationships. Use only the standard library; no filesystem/network/database/process/logging during imports or operations. No text projection, editing, AIRA template, HTTP, or changes to existing models/contracts. PostgreSQL is running for the full gate, baseline607+24 passed; request normal socket permission if necessary. Do not edit independent acceptance, fixtures, contracts, docs, dependencies, runner/prompt/status/progress. Do not explore output/, .artifact-build/, or the user work archive. Preserve other uncommitted changes. Run bash scripts/check.sh and stop after D02-01.",
+      "acceptance_criteria": [
+        "open_docx accepts bytes within explicit technical limits and returns immutable DocxSource with SHA256, byte size, actual main part, and complete entry/relationship metadata. Raw source bytes are excluded from repr.",
+        "Main part is located using the sole Internal root officeDocument relationship, content type and document/body structure. Standard Transitional/Strict packages and nonstandard part names work. Content types and relationship sources/targets are validated.",
+        "export_original returns the exact input bytes without rebuilding ZIP/XML, retaining metadata, formatting, binary/unknown parts, comments and tracked changes without interpretation. Reopening is deterministic.",
+        "Corrupt ZIP/XML/CRC, ambiguous names/relationships, unsupported containers and exceeded limits produce safe DocxError without source content. DTD/entities are rejected including UTF16 XML.",
+        "Imports and operations do not read files/secrets, extract to disk, access network/database or launch processes. External links are metadata only. Existing services and database schema remain unchanged.",
+        "Independent synthetic acceptance and the full bash scripts/check.sh pass. No-op export is not presented as complete editable import, visual editor or production DOCX readiness."
+      ],
+      "check_command": [
+        "bash",
+        "scripts/check.sh"
+      ],
+      "status": "completed",
+      "depends_on": [
+        "D01-02"
+      ],
+      "allowed_paths": [
+        "src/ara/docx_package/**",
+        "tests/docx_package/**"
+      ]
+    },
+    {
+      "id": "D02-02",
+      "title": "Project DOCX body structure with immutable source anchors",
+      "prompt": "Read docs/current-product-scope.md and docs/d02-02-contract.md first. Implement only D02-02 in ara.docx_package.projection: pure read-only structural body projection, immutable source anchors, paragraph spans, nested tables, explicit opaque content and coverage notices. Keep original DOCX authoritative and export unchanged. Follow the exact conservative complex-field and tracked-change policies; do not interpret final Word rendering or auto-accept changes. Use existing open_docx and safe parsing_end/chunks, preserving ZIP comment support, without changing any existing D02-01 files. No Markdown adapter, ML execution, HTTP, database, editing, templates or UI. Standard library only. PostgreSQL is running; baseline 711 tests and 24 subtests passed. Use normal socket permissions for bash scripts/check.sh. Do not modify independent acceptance, docs, contracts, fixtures, dependencies, runner/prompt/tasks/progress. Do not read output/, .artifact-build/ or the user work archive. Preserve other changes. Run the full check and stop after D02-02.",
+      "acceptance_criteria": [
+        "project_docx returns an immutable projection with the unchanged validated DocxSource, exact body/source anchors, deterministic ordered blocks and coverage_scope. Repeated inputs yield identical anchors, distinct occurrences have distinct paths and original export remains byte-identical.",
+        "Paragraphs retain decoded text without trimming, empty paragraphs/spans, Unicode code-point offsets, run paths, direct style/numbering references, hyperlinks, tabs and typed breaks. Tables preserve physical rows/cells, merged-cell metadata and nested block order without duplicated text.",
+        "Opaque blocks/spans and deterministic notices disclose unsupported markup, revisions, complex fields and other parts. Unknown wrappers are not traversed as ordinary text; opaque spans separate surrounding text. Other stories are not silently mixed into body content.",
+        "ProjectionLimits strictly bound main XML node count and depth during parsing, including unsupported subtrees. Invalid input and exceeded limits have safe ProjectionError, existing package failures retain DocxError without content disclosure.",
+        "Imports and calls perform no filesystem, network, database, process or logging side effects; external relationships are metadata only. Existing D02-01, services, schemas, dependencies and product scope remain unchanged.",
+        "Independent synthetic acceptance, existing rendered DOCX fixture preservation and full bash scripts/check.sh pass. Read-only projection is not presented as complete editable import, effective Word layout, a ready editor or actual analysis."
+      ],
+      "check_command": [
+        "bash",
+        "scripts/check.sh"
+      ],
+      "status": "completed",
+      "depends_on": [
+        "D02-01"
+      ],
+      "allowed_paths": [
+        "src/ara/docx_package/projection/**",
+        "tests/docx_projection/**"
+      ]
+    },
+    {
+      "id": "D02-03",
+      "title": "Export DOCX with atomic anchored text edits and source formatting preservation",
+      "prompt": "Read docs/current-product-scope.md and docs/d02-03-contract.md first. Implement only D02-03 in ara.docx_package.editing: TextEdit, EditLimits, EditError and pure export_docx. Replace only projected text spans using exact source anchors and expected text, atomically. Preserve lexical XML outside targeted w:t, untouched package parts and specified ZIP metadata. Support UTF-8/UTF-16, whitespace, safe escaping, empty nodes, nested tables and hyperlinks. Reject stale/opaque/unsupported/protected/signed edits safely; no-op must preserve exact bytes. Reuse existing package/projection validation without modifying D02-01/D02-02. Validate output using the same limits. Standard library only, no filesystem/network/DB/process/logging. No UI, HTTP, Markdown adapter, ML, schema, template or structural edits. Source baseline827 tests+24subtests passed. PostgreSQL is running; use normal socket permissions for bash scripts/check.sh. Do not modify independent acceptance, fixtures, docs, contracts, dependencies, runner/prompt/tasks/progress. Do not read output/, .artifact-build/ or user work archive. Preserve other changes. Run the full check and stop after D02-03.",
+      "acceptance_criteria": [
+        "Pure API and immutable validated DTOs implement exact atomic replacements of projected text spans by SourceAnchor and expected_text; invalid, duplicate, stale and non-text targets fail safely without partial export.",
+        "Edits preserve exact replacement Unicode and spaces, existing run/paragraph/table formatting, hyperlinks, and nested cells. UTF-8/UTF-16, empty/self-closing nodes and XML escaping work. XML bytes outside changed text elements remain identical.",
+        "Unchanged parts, entry order, directories, specified ZIP metadata and comments survive export. No-op is byte-identical; actual edits produce valid deterministic packages, with newly projected anchors and no stale-source reuse.",
+        "Explicit limits and safe errors cover inputs and output. Unsupported markup, fields, revisions, signatures, protection and trackRevisions are never silently modified or accepted. Existing package/projection behavior is preserved.",
+        "Imports and calls have no file, secret, network, DB, process or logging side effects. Only allowed new editing source and own test files change; existing services, schemas, contracts and dependencies remain unchanged.",
+        "Independent synthetic acceptance including rich DOCX source preservation and full bash scripts/check.sh pass. Backend text editing is not presented as ready UI, full Word support, model analysis or AIRA template."
+      ],
+      "check_command": [
+        "bash",
+        "scripts/check.sh"
+      ],
+      "status": "completed",
+      "depends_on": [
+        "D02-02"
+      ],
+      "allowed_paths": [
+        "src/ara/docx_package/editing/**",
+        "tests/docx_editing/**"
+      ]
+    },
+    {
+      "id": "D02-04",
+      "title": "Export atomic in-paragraph DOCX ranges across formatted text spans",
+      "prompt": "Read docs/current-product-scope.md and docs/d02-04-contract.md first. Implement only D02-04 in ara.docx_package.ranges: TextPosition, RangeEdit, RangeLimits, RangeError, export_docx_ranges. Validate exact source anchors and local Unicode offsets, resolve endpoints in one paragraph, check expected text and original batch conflicts. Insert replacement in the explicit start span, preserve suffix styles and aggregate multiple changes to one TextEdit per span. No-op must not redistribute formatting. Guard all endpoint/intermediate spans including empty ones, hyperlink identity and hidden bookmark boundaries using bounded source parsing. Compute lower EditLimits explicitly; use exactly one existing editing.export_docx call with unchanged package/projection limits. Preserve existing D02-01/02/03 source, schemas, contracts and dependencies. Standard library only, no I/O/network/database/process/logging. No UI, paragraph/table structure edits, new template, ML or auto-fix. Baseline full check passed 930 tests and 24 subtests. PostgreSQL is running for full check; the local Unix socket requires standard escalated permission in this sandbox, so use the supported approval flow directly for bash scripts/check.sh. Do not change managed permission policy. Do not modify independent acceptance, fixtures, docs, contracts, dependencies, runner/prompt/tasks/progress. Do not read output/, .artifact-build/ or user work archive. Preserve unrelated changes. Run bash scripts/check.sh and stop after D02-04.",
+      "acceptance_criteria": [
+        "Pure validated immutable range API resolves exact source TextPositions in one paragraph, uses Unicode code-point offsets and expected text, supports substring replacements, insertions and deletions across existing text spans without changing XML structure.",
+        "Replacement inherits explicit start-span formatting; original prefix/suffix and untouched parts remain intact. Nested-table and same-hyperlink ranges work; no-op preserves original bytes and distribution across runs.",
+        "All source-relative ranges are validated atomically. Overlap, duplicate and insertion boundary conflicts are rejected, adjacent nonempty ranges and disjoint edits in one span are aggregated correctly, and input order cannot affect output.",
+        "Actual changes cannot cross opaque/control spans, distinct hyperlink identities or hidden bookmark boundaries. Invalid/stale/mutated inputs and limits fail safely; existing protection, encoding, package and projection errors are preserved.",
+        "Range budgets and computed lower EditLimits support a range through more than 1000 spans and short edits in a span longer than 1M without accidental defaults. Exactly one lower export revalidates the output and keeps existing preservation guarantees.",
+        "Independent synthetic acceptance and full bash scripts/check.sh pass. Only allowed new range source and own tests change, with no external side effects, dependencies, UI, ML, schema or structural editor claims."
+      ],
+      "check_command": [
+        "bash",
+        "scripts/check.sh"
+      ],
+      "status": "completed",
+      "depends_on": [
+        "D02-03"
+      ],
+      "allowed_paths": [
+        "src/ara/docx_package/ranges/**",
+        "tests/docx_ranges/**"
+      ]
+    },
+    {
+      "id": "D02-05",
+      "title": "Manage in-memory DOCX editing sessions with undo, redo and saved-state tracking",
+      "prompt": "Read docs/current-product-scope.md and docs/d02-05-contract.md first. Implement only D02-05 in ara.docx_package.session: SessionLimits, SessionSnapshot, SessionError and DocxSession. Manage exact DOCX bytes, authoritative fresh projections, atomic D02-04 range edits, bounded undo/redo, monotonic revisions and an explicit saved-content marker. No-op/errors preserve history; stale commands and stale save acknowledgements cannot alter state. Detach external snapshots and constructor limits from internal state. Preserve all lower-layer validation and protection. Only allowed new session source and own tests may change; do not change existing D02-01 through D02-04 modules, acceptance tests, fixtures, docs, schemas, dependencies, contracts, runner/prompt/tasks/progress. Standard library only; no file/network/DB/process/secret/logging side effects in the new module. No UI, filesystem storage, autosave timer, persistence, model, template or structural edits. Prior full gate passed 1039 tests and 24 subtests. This run uses an isolated checkout with its own running PostgreSQL; use normal approval escalation for the full bash scripts/check.sh local socket access. Never modify permission policy or credentials. Run full check. Visual acceptance may reuse the previously reviewed D02-04 rendered DOCX only if your actual session export matches those exact bytes, as described in the contract. Parent provides local QA evidence under ignored .runtime; do not read output/, .artifact-build/ or the user archive. If new rendering is needed, use only bundled LibreOffice ~/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/override/soffice and bundled runtime, not desktop LibreOffice. Preserve other edits and stop after D02-05.",
+      "acceptance_criteria": [
+        "DocxSession validates imported bytes and copied limits, provides immutable snapshots with exact bytes and authoritative projections, and isolates internal state from mutated returned DTOs or caller-owned configuration.",
+        "Atomic apply delegates to existing range export, refreshes anchors, increments revisions only for actual byte changes, and preserves all state on no-op or error. Stale revision and ABA commands are rejected safely.",
+        "Undo and redo restore exact prior bytes, keep monotonic revisions, and support branching. No-op and rejected commands preserve redo. Saved-content tracking follows bytes across history and rejects late save acknowledgements without performing persistence.",
+        "Strict inclusive history state/byte budgets count all retained positions, evict oldest undo entries on actual new edits, reject a too-large current file atomically, and preserve saved markers independently of evicted history.",
+        "Safe errors and inert imports/operations preserve lower-layer errors and restrictions. Existing sources, HTTP/ML contracts, database, dependencies and product scope remain unchanged.",
+        "Independent synthetic acceptance, rich DOCX edit/undo/redo visual preservation and full bash scripts/check.sh pass. The result is not presented as a ready UI, disk storage, autosave, crash recovery, full Word support or real analysis."
+      ],
+      "check_command": [
+        "bash",
+        "scripts/check.sh"
+      ],
+      "status": "completed",
+      "depends_on": [
+        "D02-04"
+      ],
+      "allowed_paths": [
+        "src/ara/docx_package/session/**",
+        "tests/docx_session/**"
+      ]
+    },
+    {
+      "id": "D02-06",
+      "title": "Persist exact DOCX originals and current drafts with scoped PostgreSQL CAS",
+      "prompt": "Read docs/current-product-scope.md and docs/d02-06-contract.md first. Implement only D02-06: ara.docx_documents service/DTOs, one DocxDocument model addition and migration 0006_docx_documents. Preserve original/current DOCX bytes and hashes. Caller document_id is the import replay key, with exact title/original matching and no draft reset. Use fixed default package/projection validation, strict storage CAS distinct from session revision, owner/project locks, deterministic metadata-only pagination, corruption detection and safe storage errors. Preserve nine old tables and all existing services and pure DOCX modules. Existing historical D01-01 migration test was pinned by parent to V5; do not modify independent acceptance. Allowed paths only: new service, new own tests, models.py (only new model/imports), new migration. No HTTP/UI, autosave timer, paths/filesystem export, analysis, template, extra dependency, schema redesign or new model execution. Import modules inert; operations only use supplied engine and no secrets/content logging. Baseline full gate1149 tests+24subtests passed. This run uses isolated checkout and own running PostgreSQL. Use normal require_escalated permission for socket access for scripts/check.sh; do not change managed permission policy/auth/model/quota. No edits to docs/contracts/runner/prompt/tasks/progress, old migrations or independent tests. Do not read output/, .artifact-build/ or user archive. Parent-provided synthetic QA evidence is under ignored .runtime; exact reference-byte equality plus PNG inspection is allowed by contract. If needed use only bundled LibreOffice ~/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/override/soffice, never desktop LibreOffice. Run full bash scripts/check.sh and stop after D02-06.",
+      "acceptance_criteria": [
+        "New DocxDocument metadata and migration0006 add exactly the scoped DOCX storage table/index with required types and named integrity constraints. Upgrade/repeat/downgrade preserve all nine prior tables and data.",
+        "Import/get/save retain exact immutable original bytes and current DOCX bytes/hashes. Input validation uses fixed bounded projection; corrupted stored packages/metadata fail safely. Detached frozen snapshots reopen in a fresh process and default DocxSession without Markdown conversion.",
+        "Caller-ID import replay is atomic and returns the latest draft only for matching original/title; mismatches conflict and foreign IDs remain404. Deterministic bounded lists select metadata only and enforce project ownership.",
+        "Strict storage-revision CAS, DB timestamps and correct Project-to-document lock ordering prevent lost updates and access races. Concurrent imports/saves, rollback, post-commit uncertainty and MAX bigint revision semantics satisfy the contract.",
+        "Errors are safe and retain intended classes, caller engine remains owned by caller, imports have no I/O, and old models/contracts/services/pure DOCX modules remain unchanged. Only allowed files change; no secrets or user archives are used.",
+        "Independent synthetic acceptance, new-engine/process recovery, rich DOCX session-save-reopen preservation and full bash scripts/check.sh pass. Backend storage is not claimed to be UI, timed autosave, analysis recovery, full Word support or installer readiness."
+      ],
+      "check_command": [
+        "bash",
+        "scripts/check.sh"
+      ],
+      "status": "completed",
+      "depends_on": [
+        "D02-05"
+      ],
+      "allowed_paths": [
+        "src/ara/docx_documents/**",
+        "src/ara/models.py",
+        "migrations/versions/0006_docx_documents.py",
+        "tests/docx_documents/**"
+      ]
+    },
+    {
+      "id": "D02-07",
+      "title": "Read scoped DOCX metadata and download exact current bytes over local HTTP",
+      "prompt": "Read docs/current-product-scope.md and docs/d02-07-contract.md. Implement ONLY three GET routes for D02-07: list, metadata, binary current content. Use unchanged D02-06 services, server-owned runtime and existing local-dev/error handlers. Strict bounded ASCII query parsing, reject duplicate/unknown keys, canonical safe filenames, no-store and revision/hash headers from same snapshot. Preserve inert imports and exact integer OpenAPI bounds, old routes/wrappers. Only new api.py, optional http_schemas.py, minimal app.py install wiring, own test_http_reads.py may change. Independent test_docx_http_reads.py is frozen (21 red cases). Do not change acceptance, docs, dependencies, runner/tasks/progress, existing services/DTOs/DB or other source. No import/save HTTP, UI, timers, file writing, model execution or real auth. Isolated checkout has its own running PostgreSQL; request normal require_escalated for full bash scripts/check.sh. Preserve managed permission policy, provider/auth/quota. No secrets or user archive, output/ or .artifact-build/. No subagents or nested runners. Run full bash scripts/check.sh and stop after one task.",
+      "acceptance_criteria": [
+        "Only explicit local runtime installs the three GET routes; default factory and all old behavior remain unchanged; new imports are inert.",
+        "Metadata and bounded lists expose exactly summary fields with scoped metadata-only service pagination; strict query/UUID validation yields safe errors.",
+        "Binary download returns exact latest current DOCX with safe canonical filename, no-store, correct MIME/length/hash/revision headers from one validated snapshot.",
+        "Existing ownership, storage/corruption errors and request envelope remain intact; read-only operations preserve data and caller engine.",
+        "OpenAPI accurately documents binary, metadata and errors with exact bigint bounds; frozen acceptance and full bash scripts/check.sh pass."
+      ],
+      "check_command": [
+        "bash",
+        "scripts/check.sh"
+      ],
+      "status": "blocked",
+      "depends_on": [
+        "D02-06"
+      ],
+      "allowed_paths": [
+        "src/ara/docx_documents/api.py",
+        "src/ara/docx_documents/http_schemas.py",
+        "src/ara/app.py",
+        "tests/docx_documents/test_http_reads.py"
+      ]
+    }
+  ]
+}

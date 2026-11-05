@@ -1,0 +1,21 @@
+# D03-16C2 — атомарный current save и receipt
+
+31 октября 2026, после 0dcc0f6, Sol 6.1 High, F05/F06/F11/F12. Второй подцикл C: выполнить подготовленный save ровно один раз. Pending checkpoint не очищать, mark_saved/финализация — C3/D. Новые endpoints/миграции/таймер/frontend не входят.
+
+API ara.docx_documents.save_commit.commit_save(runtime,*,handle:SaveHandle)->CommittedSave. Новый frozen/slotted CommittedSave(receipt:DocxSummary,document:StoredDocx,handle:SaveHandle), поля скрыты из repr. Property current_matches_receipt — равенство storage revisions (и уже проверенных digest/metadata), не только bytes. Handle detach/revalidate целиком до SQL; wrong type/frozen bypass/повреждённая identity -> DocumentError 422 validation_error без содержимого. Caller/returned DTO metadata не разделяются.
+
+Одна `_session(runtime)`: project ownership lock → scoped document FOR UPDATE → receipt. Snapshot current/original проверяется прежним _snapshot. Scope проверяется до private receipt/checkpoint conflict. Общий DocxEditReceipt key=(document_id,operation_id) сохраняет namespace с прежними text/paragraph writes.
+
+Receipt уже есть: проверить shape/hash/PK и целостность metadata. Если request_sha256 другой —409 idempotency_conflict. Если matching, проверить receipt revision==handle.base_storage_revision+1, candidate hash/size, created_at identity, receipt revision≤current, а при receipt revision=current также title/hash/size/updated_at должны совпадать с current. Несогласованная stored metadata ->500 storage_error. Вернуть старый receipt и отдельно свежий current, без чтения/проверки/изменения checkpoint или legacy draft: они могли измениться после сохранения. Равные bytes новой storage revision не делают current_matches_receipt=true.
+
+Receipt отсутствует: прочитать checkpoint/legacy под тем же lock; отсутствие/другая phase/revision/op/fingerprint/metadata/base/candidate ->409 checkpoint_conflict; legacy как B2B. Проверить stored working package/hash/selection/pending fingerprint и exact complete handle. Current revision/hash обязаны совпадать с base; иначе409 docx_conflict. MAX base запрещает +1:409 revision_exhausted. Не принимать bytes/новые edits от caller: candidate только из durable pending.
+
+Fresh commit: current_data=working exact bytes, current_sha256=working hash, storage_revision=base+1, updated_at clock_timestamp(); original неизменен. Добавить receipt с request_sha256 и полным сохранённым DocxSummary. Подготовить/проверить CommittedSave до commit. Ошибка INSERT/DTO/flush/commit до факта записи откатывает обе записи; after-commit ACK-loss ->503 не доказывает rollback. Повтор того же handle получает прежний receipt без нового increment. Pending остаётся exact тем же; не менять его revision/timestamp/last request. Даже same-byte prepared save даёт +1 и receipt; обычный чистый controller позже пропускает ненужный save.
+
+## Пути и проверка
+
+Source новый docx_documents/save_commit.py; save_models.py только добавление CommittedSave без изменения SaveHandle/PreparedSave semantics. Existing storage/exporters/checkpoints/recovery/fingerprints/БД/models/migrations/старые tests/API/dependencies/runner/tasks/progress/AGENTS не менять. Freeze tests/acceptance/test_docx_save_commit.py и этот контракт. Дополнительно tests/docx_documents/test_save_commit_*.py. Result docs/d03-16c2-result.md и queue.
+
+Acceptance: new current+receipt exact/pending untouched; repeat stable; old replay после newer current/checkpoint/legacy без отката; scope before replay; no receipt/no matching pending/foreign writer; altered complete handle; same bytes ABA; receipt namespace/corruption; DTO and receipt insert rollback; before/after-commit ACK-loss; new process recovery; MAX/strict input where reachable. Проверять реальные PostgreSQL transactions/locks, baseline рабочих баз, no text/secret leaks/import effects. Red→code→targeted→bash scripts/check.sh→report/local commit, затем C3 на текущем режиме, если архитектура остаётся определённой.
+
+Уточнение 31 октября в C3A: fresh commit legacy pending с prepared checkpoint revision=MAX отказывает revision_exhausted, поскольку cleanup требует ещё одного шага. Уже существующий matching receipt replay остаётся доступен. Остальная C2 semantics/приёмка не меняется; d03-16c3a-contract.md задаёт regression coverage.

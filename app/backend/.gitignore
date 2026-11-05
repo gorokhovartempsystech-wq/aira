@@ -1,0 +1,44 @@
+# Original work and study archive (both decomposed and composed Unicode spellings).
+/Файлы с работы (мои + Цезаря)/
+/Файлы с работы (мои + Цезаря)/
+
+# Local research containing source paths, excerpts, or team context.
+/docs/artifact-corpus-review-2026-09-17.md
+/docs/evaluation-cases-draft.md
+/docs/corpus-source-index.json
+/docs/device-classification-merge-scenario.md
+/docs/backend-process-review-2026-09-17.md
+
+# Secrets are loaded from ~/secrets.env, never stored in this repository.
+.env
+.env.*
+*.pem
+*.key
+
+# Local environment, databases, and Ralph execution output.
+.venv/
+.runtime/
+.ralph/
+*.db
+*.sqlite
+*.sqlite3
+.pgdata/
+pgdata/
+
+# Python build and verification output.
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+dist/
+build/
+*.egg-info/
+
+# Operating system and editor files.
+.DS_Store
+.idea/
+.vscode/

@@ -1,0 +1,13 @@
+# D03-16E3B — явное удаление recovery copy
+
+31 октября 2026, Sol 6.1 High, F05/F11/F12. Реализован d03-16e3b-contract.md: read-only prepare-discard и explicit discard с client-retained complete plan. Working plan использует прежний B2 CAS; pending plan сохраняет полную SaveHandle proof и C3B semantics даже после очистки/нового app. Нет unbounded cache/новой авторизации/SQL обхода.
+
+Подготовка не init/write/read receipt. Strict codec проверяет все nested fields, canonical UUID/string counters/selection/полную save fingerprint и path/body/handle document identity до durable dispatch. Reply различает not_checked/confirmed/unconfirmed; отсутствие confirmation не доказывает rollback. Current/original/receipts остаются; старый plan не очищает новую CP. Живые RAM actors не закрываются и остаются доступны для working download при conflict. Gate/64KiB/body/header/no-store/error границы E2 сохранены. OpenAPI strict plans/handle/replies, refs разрешимы. Installation deferred, тот же copied registry runtime.
+
+Freeze **0b5882b**, red **9 failed**, 2 предупреждения, **2,30 секунды**; frozen acceptance неизменна. Старый exact route test только +2 paths, остальные AST assertions unchanged. Targeted **24 passed**, 5 предупреждений, **4,71 секунды**: 9 frozen +8 own edges +7 прежних boundaries. Real PG commit fault до/после commit, lost ACK/новый app, working/pending before/after save/newer current, superseded copy, corrupt receipt refusal/recovery rescue, invalid complete proof before dispatch, foreign/peer scope, read commit failure, SQL NULL tombstone и live RAM conflict/rescue.
+
+Полный `bash scripts/check.sh`: **2289 passed + 24 subtests passed**, 74 предупреждения, **263,99 секунды**, exit0; Ruff/format прошли, source после gate не менялся. Логи .runtime/d03-16e3b-red.log, d03-16e3b-targeted.log, d03-16e3b-full-check.log.
+
+Rich QA в собственной disposable БД: прежний import/edit/save/close/new-app recovery, затем working prepare/discard/replay, live actor conflict и exact RAM rescue. Current/original неизменны; bytes **48211**, SHA256 `1239ac34f1e975cc56e97698acfab2f747d75e1b97f759b3794f00db66114529`, равны прежнему визуально проверенному reference. Storage revision2/receipt1/checkpoint5 empty. Нового DOCX/render/Word запуска нет; .runtime/d03-16e3b-qa.json, своя БД удалена.
+
+Baseline схем/ревизий/счётчиков совпал целиком, ara_test пуста, временных ara_check_* нет, main V8 не мигрирована. Registry/native/storage/B-C/schema/dependencies/runner/tasks/progress/архив/секреты/чужие изменения не менялись. Local commit без push. Далее E3C scoped SQL deadlines/handoff на Sol 6.1 High. Frontend/таймер/ML/лицензия/desktop остаются отдельными этапами.

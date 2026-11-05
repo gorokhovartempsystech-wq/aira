@@ -1,0 +1,13 @@
+# D03-17C1A — pure бюджет и арбитр Stop/publication
+
+1 ноября 2026, Sol6.1 High. Реализован [контракт](d03-17c1a-contract.md) в новом `ara.docx_analysis_worker.control`: explicit continuous-time nanosecond budget, late-lease fence, irreversible Stop, clean-child prerequisite, single publication permit и resolution committed/unknown/rolled_back/terminal. Методы не читают часы и не вызывают SQL/процессы. Все переходы под коротким mutex, без внешних callbacks; Stop во время committing/unknown остаётся pending, подтверждённый success не превращается в отмену.
+
+Controller повторно проверяет DTO/type/range/overflow до мутации, отделяет input/returned identity от внутреннего состояния, не копируется/не сериализуется. Authority permit — exact object внутри controller, чужой/подделанный/устаревший token не принимается. Хранится один token/последний outcome, без истории всех попыток публикации. Поздний heartbeat не оживляет stopped control; новые lease не увеличивают исходный deadline, safety guard не накапливается при tick.
+
+Freeze acceptance **36a4eb5**; red **60 failed**,0,44 секунды,exit1, отсутствующий модуль. После реализации acceptance+own **68 passed**,0,07 секунды,exit0 (`.runtime/d03-17c1a-own.log`). Проверены explicit-time boundary/equality/latency/guard/MAX, invalid DTO и no-mutation, stale clock, Stop/reserve/rollback/heartbeat races через barriers, unknown-before/after Stop, authoritative commit, conflicting settlements и forged tokens. Own edges: snapshot detachment, lease clamp, no renewal after publication admission, stale-clock success,1000 rollback generations, missing fields. Fresh import/constructor без file/env/clock/network/process/DB/model/background I/O.
+
+**`bash scripts/check.sh`:3025 tests +24 subtests passed,74 warnings,346,51 секунды,exit0**; Ruff/format прошли (365files). `.runtime/d03-17c1a-full-check.log`. Read-only snapshot `.runtime/d03-17c1a-final-runtime.json` совпал с baseline: main V8/schema/counts unchanged, ara_test пуста, временных ara_check0.
+
+Это pure компонент, не работающая кнопка Stop в desktop: SQL coordination следует в C1B, IPC/OS/scheduler — C1C–F. Факт OS exit утверждает trusted adapter; control сам не проверяет процессы и не подтверждает durable cancellation. Прежние runtime modules/старые tests/DDL/runner/tasks/progress/dependencies не менялись. Secrets/archive/Word/model не использовались; чужие изменения сохранены. Только локальный commit без push.
+
+Далее **C1B на Sol6.1 High**, отдельные contract/frozen acceptance/implementation/gate. Текущий самостоятельный остаток после C1A **30–45 циклов**; настоящее приложение/weights/frontend/native gates не объявлены готовыми.

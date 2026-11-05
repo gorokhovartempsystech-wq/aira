@@ -1,0 +1,9 @@
+# D03-17C1F1 — implementation preflight
+
+3 ноября 2026, Sol6.1 High. Выполняется [контракт F1](d03-17c1f1-contract.md); source ещё отсутствует. Baseline468 hashes совпал с C1F design `8045db1`; read-only schema/counts совпали, main V8. Чужие dirty files сохраняются.
+
+Реализация только в пяти разрешённых файлах нового supervisor package. Public exports: create_dispatcher, AttemptDispatcher, DispatchError, DispatchView, LeaseDecision, LeaseTicket; PublicationPort subclass возвращается фабрикой dispatcher. C1A/B и прежние tests неизменны. F1 не создаёт threads/SQL/native jobs. Синхронизация одним Condition, отдельный nonblocking step guard и port caller guard; thread affinity хранит Thread object, не переиспользуемый thread ident. Один current token, никаких token histories.
+
+Новая acceptance — test_docx_analysis_dispatcher.py, дополнительные собственные edges позднее. Для deterministic publication tests вспомогательный availability clock `_dispatch_cells.monotonic_ns` допускает monkeypatch: это импорт стандартной функции, не test-only production hook. Native continuous fake clock остаётся отдельным; tests timeout отдельно используют реальный либо управляемый availability cutoff. Нормальные publication tests не зависят от случайного выполнения publisher/owner за50ms под нагрузкой. Все созданные тестами потоки explicit join; запрос с неизвестным timing никогда не считается delivered по одному view.pending.
+
+До source: Ruff/format новой acceptance, collection и red по отсутствующему новому API, отдельный локальный freeze commit контракта/приёмки/preflight. После freeze assertions/подготовку без основания не менять. После source: targeted→full check→468 старых hashes/read-only DB→result/local commit, затем F2 preparation на той же модели. Acceptance может проверять private instrumentation только для управления расписанием, не дублирует структуру implementation.

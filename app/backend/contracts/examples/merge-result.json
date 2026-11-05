@@ -1,0 +1,163 @@
+{
+  "contract_version": "0.1.0",
+  "run_id": "run_demo_merge",
+  "base_version_id": "version_1",
+  "context_revision_id": "context_1",
+  "review_status": "needs_clarification",
+  "summary": "Предложена независимая классификация. Источник достоверного аппаратного типа требуется уточнить.",
+  "coverage": [
+    {
+      "source": "base",
+      "id": "b1",
+      "status": "analyzed",
+      "reason": null
+    },
+    {
+      "source": "base",
+      "id": "b2",
+      "status": "analyzed",
+      "reason": null
+    },
+    {
+      "source": "base",
+      "id": "b3",
+      "status": "analyzed",
+      "reason": null
+    },
+    {
+      "source": "base",
+      "id": "b4",
+      "status": "analyzed",
+      "reason": null
+    },
+    {
+      "source": "context",
+      "id": "c1",
+      "status": "analyzed",
+      "reason": null
+    },
+    {
+      "source": "context",
+      "id": "c2",
+      "status": "analyzed",
+      "reason": null
+    }
+  ],
+  "findings": [
+    {
+      "id": "f1",
+      "category": "ambiguity",
+      "severity": "warning",
+      "assessment": "needs_confirmation",
+      "title": "Не определён источник аппаратного типа",
+      "explanation": "В переданном описании перечислены поля текущего ответа, но нет подтверждённого источника аппаратной классификации.",
+      "evidence": [
+        {
+          "source": "base",
+          "id": "b2",
+          "quote": "getInOuts возвращает outNumber, name, type и isSlider."
+        },
+        {
+          "source": "context",
+          "id": "c2",
+          "quote": "Нам нужен достоверный тип оборудования; переименование не должно его менять."
+        }
+      ]
+    }
+  ],
+  "change_groups": [
+    {
+      "id": "g1",
+      "title": "Отделить переименование от классификации",
+      "basis": "explicit_requirement",
+      "rationale": "Уточнение пользователя требует сохранить аппаратный тип при изменении имени.",
+      "evidence": [
+        {
+          "source": "context",
+          "id": "c2",
+          "quote": "переименование не должно его менять."
+        }
+      ],
+      "depends_on_group_ids": [],
+      "blocking_question_ids": [],
+      "patches": [
+        {
+          "operation": "replace_block",
+          "target_block_id": "b3",
+          "new_blocks": [
+            {
+              "kind": "paragraph",
+              "text": "saveInOutName сохраняет clientName и controllerType. controllerType определяет способ управления. Изменение пользовательского имени не меняет аппаратную классификацию устройства, если она определена."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "g2",
+      "title": "Добавить явный аппаратный тип и иконку",
+      "basis": "design_proposal",
+      "rationale": "Названия полей и UNKNOWN предложены как вариант реализации бизнес-требования. Наличие источника типа ещё не подтверждено.",
+      "evidence": [
+        {
+          "source": "context",
+          "id": "c1",
+          "quote": "Добавить определение аппаратного типа для выбора иконки независимо от пользовательского имени."
+        }
+      ],
+      "depends_on_group_ids": [
+        "g1"
+      ],
+      "blocking_question_ids": [
+        "q1"
+      ],
+      "patches": [
+        {
+          "operation": "insert_after",
+          "target_block_id": "b2",
+          "new_blocks": [
+            {
+              "kind": "paragraph",
+              "text": "Предлагается возвращать outputTypeCode, outputTypeSource и iconKey. Тип определяется по подтверждённым данным адаптера или проверенному справочнику; при отсутствии данных возвращаются UNKNOWN и общая иконка. Отображаемое name сохраняется."
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "questions": [
+    {
+      "id": "q1",
+      "prompt": "Какие данные адаптера или проверенный справочник подтверждают аппаратный тип?",
+      "reason": "Без этого нельзя обещать автоматическое определение RELAY для конкретного выхода.",
+      "evidence": [
+        {
+          "source": "context",
+          "id": "c2",
+          "quote": "Нам нужен достоверный тип оборудования; переименование не должно его менять."
+        }
+      ]
+    }
+  ],
+  "change_outcomes": [
+    {
+      "context_item_id": "c1",
+      "status": "needs_clarification",
+      "rationale": "Независимость имени описана; автоматическое определение класса зависит от источника данных. Предложения ещё не приняты пользователем.",
+      "change_group_ids": [
+        "g1",
+        "g2"
+      ],
+      "question_ids": [
+        "q1"
+      ],
+      "evidence": [
+        {
+          "source": "context",
+          "id": "c1",
+          "quote": "Добавить определение аппаратного типа для выбора иконки независимо от пользовательского имени."
+        }
+      ]
+    }
+  ]
+}

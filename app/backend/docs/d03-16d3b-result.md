@@ -1,0 +1,21 @@
+# D03-16D3B — полный save и точный снимок результата
+
+31 октября 2026, Sol 6.1 High, F05/F06/F11/F12. Реализован d03-16d3b-contract.md: dirty save через C1→C2→C3, precomputed marked fork, local target binding и одна publication editor/base/CP/sequence/latest/SavedTarget. Сохранение не увеличивает native revision, не сбрасывает undo/redo/selection. Clean save остаётся checkpoint без current revision/receipt. SavedTarget возвращает immutable точные bytes и подтверждённую storage identity, не latest GET.
+
+Full ожидаемый SaveHandle/UUID/body существуют до prepare. Unknown outcome сохраняет attempt; retry сначала подтверждает C2 receipt, при отсутствии pending fresh attempt может один раз повторить исходный C1. Recovered pending не делает C1 и не воскрешает исчезнувший slot. Новый local epoch/core revision0 не сравнивается с historical origin как с действующим счётчиком. Подтверждение чужим recovery controller распознаётся full C3 control proof без duplicate storage revision.
+
+Passive snapshot читает receipt до payload другого checkpoint/legacy, показывает save confirmation отдельно от актуальности current. Foreign head/slot и stored corruption не приводят к false mark_saved/cleanup. Native latest retry во время active save выполняет отдельный полный scoped proof read после освобождения предыдущего read lock; accepted edit не повторяется и свой commit не выглядит ложным conflict. Возвращённый SavedTarget не подменяется после external writer; новый accepted command/checkpoint его supersede-ит. DTO/SQL/error после commit не откатывает current вручную, active позволяет повтор.
+
+Freeze **b1690ba**, red **14 failed, 9 passed**, **4,91 секунды**: 13 новых save cases и плановое расширение dirty save ещё отсутствовали. Разрешённая D3B контрактом единственная миграция старого test tail: временный D3A dirty-save refusal заменён проверками actual clean saved result/current revision+1/exact bytes/original/receipt1/history/selection. AST всех прежних clean-save assertions и остальных D3A tests сверены с 971f496 — unchanged. Другие frozen tests после freeze не менялись; ни B/C/native/schema contract не ослаблялись.
+
+Targeted **111 passed**, 2 предупреждения, **29,45 секунды**: 13 frozen save cases, 12 дополнительных save edges и 86 D1/D2/D3A checks. Проверены шесть before/after transaction ACK-loss cuts, response failure после finalize, expected handle до C1, another controller/process finalize, historical origin vs new local revision, corrupt/foreign receipt, чужой legacy/CP/head, read-only active proof, strict output isolation, prepare reply tampering, last CP boundary, resource failure до attempt, inert save-module import, late native retry. Повтор сохранения даёт один durable receipt.
+
+Предварительный общий gate: 2196 passed +24 subtests, 70 предупреждений, 229,33 секунды. Во время него уточнён late native replay и добавлен отдельный regression case, поэтому итоговый gate выполняется повторно на окончательном составе.
+
+Финальный `bash scripts/check.sh`: **2197 passed + 24 subtests passed**, 69 предупреждений, **226,96 секунды**, exit 0. Ruff/format прошли; production source после gate не менялся. Логи .runtime/d03-16d3b-red.log, d03-16d3b-targeted.log, d03-16d3b-final-check.log.
+
+Disposable rich DOCX QA: capture/Enter/Heading2/history→dirty save→SavedTarget→undo dirty/redo clean→clean save→close→cold restore. Current/target exact прежнему visual reference — 48211 bytes, SHA256 `1239ac34f1e975cc56e97698acfab2f747d75e1b97f759b3794f00db66114529`; original exact, stored revision2, receipt1, CP5. Undo depth2 сохранилась при save; cold restore clean/core0/history0. .runtime/d03-16d3b-qa.json; собственная DB удалена. Hash-proof reuse ранее просмотренного reference, нового render/Word запуска нет.
+
+Ограничения: HTTP/application wiring/handoff ещё E; таймер/UI/Word/Windows/macOS проверки отдельно. Main working DB V8 не мигрировалась автоматически, новые storage calls требуют V9. ML/реальные веса/лицензирование не добавлялись. После final gate/result/local commit продолжать E на Sol 6.1 High с bounded contract до кода.
+
+Baseline рабочих схем/ревизий/счётчиков совпал целиком, ara_test пуста, временных ara_check_* нет. QA повторена на финальном source после late replay fix. Архив/секреты/чужие изменения не затронуты. Локальный commit без push; PostgreSQL оставлен для следующего цикла.

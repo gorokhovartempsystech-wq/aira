@@ -1,0 +1,46 @@
+{
+  "contract_version": "0.1.0",
+  "run_id": "run_demo_merge",
+  "mode": "merge",
+  "base_document": {
+    "document_id": "doc_demo",
+    "version_id": "version_1",
+    "blocks": [
+      {
+        "id": "b1",
+        "kind": "heading",
+        "text": "# Управляемые устройства"
+      },
+      {
+        "id": "b2",
+        "kind": "paragraph",
+        "text": "getInOuts возвращает outNumber, name, type и isSlider. name задаёт пользователь."
+      },
+      {
+        "id": "b3",
+        "kind": "paragraph",
+        "text": "saveInOutName сохраняет clientName и controllerType. controllerType определяет способ управления."
+      },
+      {
+        "id": "b4",
+        "kind": "paragraph",
+        "text": "Если supportedByBlock = false, раздел скрывается."
+      }
+    ]
+  },
+  "context": {
+    "revision_id": "context_1",
+    "items": [
+      {
+        "id": "c1",
+        "role": "new_requirement",
+        "text": "Добавить определение аппаратного типа для выбора иконки независимо от пользовательского имени. Сохранить существующие имена и поведение управления."
+      },
+      {
+        "id": "c2",
+        "role": "user_clarification",
+        "text": "Название «Свет» может относиться к реле. Нам нужен достоверный тип оборудования; переименование не должно его менять."
+      }
+    ]
+  }
+}

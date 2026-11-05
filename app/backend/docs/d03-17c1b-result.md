@@ -1,0 +1,13 @@
+# D03-17C1B — guarded SQL publication
+
+1 ноября 2026, Sol6.1 High. Реализован [контракт](d03-17c1b-contract.md): `GuardedPublisher`/trusted `PublicationPort`, explicit-clock direct adapter и ordered-lock reconciliation. Publisher держит один permit/reply/result digest для восстановления uncertain commit; не копируется, concurrent операция409 и Stop обслуживается отдельно. Constructor inert; raw bytes не repr/traceback. Старый unguarded complete не вызывается; B3B/C1A/DDL/старые tests не менялись.
+
+Final gate после unlocked B2B validation повторяет DB source/request identity, owner/token/fence и свежие lease/deadline, затем получает C1A permit. Result+succeeded одна transaction, только ACK разрешает success. Stop до permit запрещает запись, Stop после permit остаётся pending. Любая ошибка после permit оставляет unknown; locked barrier отличает состоявшийся commit от rollback. Exact stored result проходит B2B и сравнение reply/digest, без inference/overwrite. Stop при rollback сначала повышает durable fence; поздний Stop/повторная ошибка отмены сохраняют intent для следующего reconcile. Прежние source/results не удаляются.
+
+Freeze **985683d**; red **18 failed**,3,31 секунды,exit1. Acceptance+own **32 passed**,7,36 секунды,exit0 (`.runtime/d03-17c1b-own.log`). Проверены Stop/commit/unknown до и после фактической записи, финальные SQL fences, invalid source/reply, forged claim buffers/port identity, concurrent publisher, locked absence (реальная блокировка другой connection), late cancel/storage failure, traceback sanitization, inert constructor, locator mutation и запрет cloning. Frozen acceptance/контракт неизменны.
+
+**Итоговый `bash scripts/check.sh`:3057 tests +24 subtests passed,75 warnings,419,07 секунды,exit0**; Ruff/format прошли (370files). `.runtime/d03-17c1b-final-check.log`. После diagnostic/claim-pin edges полный gate повторён на окончательной версии. Read-only `.runtime/d03-17c1b-final-runtime.json` совпал с baseline: main V8/schema/counts unchanged, ara_test пуста, временных ara_check0. Implementation commit **10ae0ad**, результат проверки дописан отдельным documentation commit после ошибки кодировки вспомогательной shell-команды; исходники и gate не менялись.
+
+Ограничения: это trusted service, один publisher на owned attempt обеспечивает будущий supervisor. Direct port не заменяет dispatcher, OS exit утверждается control adapter. Физический child/IPC/no-UI scheduler ещё не подключены, основной desktop runtime/ML/frontend не готовы. Основная БД не мигрировалась, secrets/archive/Word/model не использовались; чужие файлы сохранены, push не выполнялся.
+
+Далее **C1C bounded wire на Sol6.1 High**, свой contract/freeze. Самостоятельный остаток после C1B **29–44 цикла**.
