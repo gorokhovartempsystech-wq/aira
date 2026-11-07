@@ -9,14 +9,14 @@
 //   onCloseRequest(handler: () => Promise<boolean>)   shell asks before quitting; true = may quit
 //
 // The capability is never stored or put into URLs. Without a shell (dev stand) the page reads
-// it from /aira/dev/connection and falls back to browser file input / download.
+// it from /aira/connection and falls back to browser file input / download.
 
 export async function connectHost() {
   const native = window.airaHost || null;
   let conn;
   if (native?.connection) conn = await native.connection();
   else {
-    const r = await fetch('/aira/dev/connection', { cache: 'no-store', credentials: 'omit' });
+    const r = await fetch('/aira/connection', { cache: 'no-store', credentials: 'omit' });
     if (!r.ok) throw new Error('host_unavailable');
     conn = await r.json();
   }

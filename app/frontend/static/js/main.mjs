@@ -458,6 +458,8 @@ function renderChrome() {
   if (!app.workspace) return;
   document.body.classList.toggle('no-sidebar', !app.sidebar);
   document.body.classList.toggle('drawer-closed', !app.drawer || !app.activeId);
+  // После обучения карточка учебного примера уходит со стартового экрана — он остаётся в меню «?».
+  $('#start [data-start="example"]').hidden = store.get(TOURS.start, false) && !tourActive();
   document.body.classList.toggle('has-doc', !!app.activeId);
   $('#licence-banner').hidden = !app.licenceLocked;
   renderSidebar();
@@ -589,7 +591,8 @@ function startSteps() {
       text: 'Я выгляну из норки в правом нижнем углу, покажу, что случилось, и подскажу, что делать. Ваш текст при этом не теряется.',
       action: { label: 'Показать', run: () => mascotAlert('Вот так я сообщаю об ошибке: что случилось и что можно сделать дальше.', 'error', { ms: 6000 }) } },
     { target: '[data-start="example"]', mood: 'happy', title: 'Попробуем?',
-      text: 'Учебный пример — самый быстрый способ увидеть проверку в деле. Повторить обучение можно кнопкой «?» в правом верхнем углу.',
+      text: ['Учебный пример — самый быстрый способ увидеть проверку в деле.',
+        'После обучения эта карточка спрячется. Пример и обучение всегда доступны по кнопке «?» в правом верхнем углу.'],
       nextLabel: 'Открыть пример', laterLabel: 'Позже', onDone: () => openExample() },
   ];
 }
@@ -612,7 +615,28 @@ function docSteps() {
 
 function startTour(kind) {
   if (kind === 'doc' && !app.activeId) kind = 'start';
-  runTour(kind === 'doc' ? docSteps() : startSteps(), { onFinish: () => store.set(TOURS[kind], true) });
+  if (kind === 'start') showStart();
+  runTour(kind === 'doc' ? docSteps() : startSteps(), { onFinish: () => { store.set(TOURS[kind], true); scheduleRender(); } });
+  renderChrome();
+}
+
+// Меню кнопки «?»: обучение и учебный пример.
+function helpMenu() {
+  if ($('.help-menu')) { $('.help-menu').remove(); return; }
+  const item = (ic, label, run) => h('button', { class: 'menu-item', type: 'button', role: 'menuitem', onclick: () => { close(); run(); } }, icon(ic), label);
+  const menu = h('div', { class: 'help-menu', role: 'menu' },
+    item('help', app.activeId ? 'Обучение: работа с документом' : 'Пройти обучение', () => startTour(app.activeId ? 'doc' : 'start')),
+    app.activeId ? item('help', 'Обучение: стартовый экран', () => startTour('start')) : null,
+    item('book', 'Открыть учебный пример', () => openExample()));
+  const r = $('#help-btn').getBoundingClientRect();
+  Object.assign(menu.style, { top: `${r.bottom + 6}px`, right: `${innerWidth - r.right}px` });
+  const away = e => { if (!menu.contains(e.target) && !e.target.closest('#help-btn')) close(); };
+  const esc = e => { if (e.key === 'Escape') close(); };
+  function close() { menu.remove(); document.removeEventListener('mousedown', away, true); document.removeEventListener('keydown', esc, true); }
+  document.addEventListener('mousedown', away, true);
+  document.addEventListener('keydown', esc, true);
+  document.body.append(menu);
+  menu.querySelector('.menu-item').focus();
 }
 
 /* =========================================================
@@ -623,7 +647,7 @@ const review = createReviewPanel({ body: $('#drawer-body'), rail: $('#rail'), ap
 $('#sidebar-toggle').addEventListener('click', () => { app.sidebar = !app.sidebar; store.set('aira.sidebar', app.sidebar); scheduleRender(); });
 $('#new-doc').addEventListener('click', () => createDocument());
 $('#home-btn').addEventListener('click', () => showStart());
-$('#help-btn').addEventListener('click', () => startTour(app.activeId ? 'doc' : 'start'));
+$('#help-btn').addEventListener('click', () => helpMenu());
 $('#hidden-toggle').addEventListener('click', () => { app.showHidden = !app.showHidden; scheduleRender(); });
 $('#start').addEventListener('click', e => {
   const a = e.target.closest('[data-start]')?.dataset.start;

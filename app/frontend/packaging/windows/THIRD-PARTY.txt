@@ -1,0 +1,14 @@
+AIRA — пилотная сборка для Windows. Сторонние компоненты в составе установки
+
+Python 3.12 (папка python)            — Python Software Foundation License, см. python\LICENSE.txt
+Библиотеки Python (python\Lib\site-packages) — лицензии в папках *.dist-info каждой библиотеки
+                                        (FastAPI, Starlette, Uvicorn, SQLAlchemy, Alembic, psycopg,
+                                        pydantic, numpy, onnxruntime, tokenizers и др.)
+PostgreSQL 18 (папка pgsql)            — PostgreSQL License (свободная, BSD-подобная),
+                                        https://www.postgresql.org/about/licence/
+Модель AIRA 0.2m (app\backend\ml_bundle) — источники, лицензии и сведения об обучении
+                                        указаны в app\backend\ml_bundle\models\manifest.json
+
+Это пилотная сборка: без цифровой подписи, без лицензирования и без нативной оболочки.
+AIRA открывается в браузере по адресу http://127.0.0.1:<порт>/aira/ и работает только на этом
+компьютере. Данные хранятся в %LOCALAPPDATA%\AIRA.

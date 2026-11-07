@@ -71,6 +71,14 @@ async function run(w, d) {
     }
     await sleep(300);
     report.log.push({ docTour: docSteps, docDone: w.localStorage.getItem('aira.tour.doc'), tourGone: !$('.tour') });
+    // After the tour the example card leaves the start screen; the "?" menu keeps it.
+    $('#home-btn').click(); await sleep(300);
+    $('#help-btn').click(); await sleep(200);
+    report.log.push({ exampleCardHidden: $('[data-start="example"]').hidden, menu: $$('.help-menu .menu-item').map(b => b.textContent) });
+    $$('.help-menu .menu-item').find(b => b.textContent.includes('Пройти обучение')).click(); await sleep(500);
+    report.log.push({ tourAgain: !!$('.tour .tour-bubble'), cardShownDuringTour: !$('[data-start="example"]').hidden });
+    w.document.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await sleep(400);
+    report.log.push({ cardHiddenAfter: $('[data-start="example"]').hidden });
     return;
   }
 
@@ -94,7 +102,8 @@ async function run(w, d) {
     // A real warning: Ctrl+Enter on an empty new document. The meerkat pops up instead of a toast.
     $('[data-start="create"]').click();
     await until(() => $('.modal input'));
-    $('.modal input').value = 'Пустой документ';
+    const name = 'Пустой документ ' + Date.now() % 100000;
+    $('.modal input').value = name;
     $('.modal .btn.primary').click();
     await until(() => $('#paper .doc .para'));
     await sleep(500);
@@ -106,14 +115,14 @@ async function run(w, d) {
       mood: [...pop.querySelector('.meerkat').classList].find(c => c.startsWith('mood-')), toastsShown: $$('.toast').length });
     // Hide a document from the list and bring it back.
     await w.AIRA.debug.refreshDocs(); await sleep(300);
-    const item = $$('#doc-list .doc-item').find(li => li.textContent.includes('Пустой документ'));
+    const item = $$('#doc-list .doc-item').find(li => li.textContent.includes(name));
     item.querySelector('[aria-label="Убрать из списка"]').click();
     await sleep(300);
-    report.log.push({ hidden: !$$('#doc-list .doc-item').some(li => li.textContent.includes('Пустой документ')), toggle: $('#hidden-toggle').textContent });
+    report.log.push({ hidden: !$$('#doc-list .doc-item').some(li => li.textContent.includes(name)), toggle: $('#hidden-toggle').textContent });
     $('#hidden-toggle').click(); await sleep(300);
-    const back = $$('#doc-list .doc-item.hidden-doc').find(li => li.textContent.includes('Пустой документ'));
+    const back = $$('#doc-list .doc-item.hidden-doc').find(li => li.textContent.includes(name));
     back.querySelector('[aria-label="Вернуть в список"]').click(); await sleep(300);
-    report.log.push({ restored: $$('#doc-list .doc-item:not(.hidden-doc)').some(li => li.textContent.includes('Пустой документ')), toggleHidden: $('#hidden-toggle').hidden });
+    report.log.push({ restored: $$('#doc-list .doc-item:not(.hidden-doc)').some(li => li.textContent.includes(name)), toggleHidden: $('#hidden-toggle').hidden });
     return;
   }
 
