@@ -16,7 +16,9 @@ AppVersion={#AppVersion}
 AppVerName=AIRA {#AppVersion} (пилотная сборка)
 AppPublisher=Команда AIRA
 AppComments=Проверка требований: размытые формулировки, дубли и противоречия. Работает на этом компьютере.
-DefaultDirName={localappdata}\Programs\AIRA
+; Обычно %LOCALAPPDATA%\Programs\AIRA. Если в профиле русские буквы и у Windows нет коротких латинских
+; имён папок, — C:\AIRA: встроенный PostgreSQL не работает с кириллицей в пути.
+DefaultDirName={code:DefaultDir}
 DisableProgramGroupPage=yes
 DisableDirPage=auto
 PrivilegesRequired=lowest
@@ -53,13 +55,33 @@ Filename: "{app}\python\pythonw.exe"; Parameters: "-s -E ""{app}\launcher\aira_l
 
 [UninstallRun]
 ; Если база осталась запущенной после сбоя — остановить её перед удалением файлов.
-Filename: "{app}\pgsql\bin\pg_ctl.exe"; Parameters: "stop -D ""{localappdata}\AIRA\pgdata"" -m fast -w"; Flags: runhidden; RunOnceId: "StopAiraPostgres"
+Filename: "{app}\python\python.exe"; Parameters: "-s -E ""{app}\launcher\aira_launcher.pyw"" --stop-db"; WorkingDir: "{app}"; Flags: runhidden; RunOnceId: "StopAiraPostgres"
 
 [UninstallDelete]
 ; Кэш Python (__pycache__), созданный во время работы. Документы и база лежат отдельно, в %LOCALAPPDATA%\AIRA.
 Type: filesandordirs; Name: "{app}"
 
 [Code]
+function IsAscii(S: String): Boolean;
+var
+  I: Integer;
+begin
+  Result := True;
+  for I := 1 to Length(S) do
+    if Ord(S[I]) > 127 then
+    begin
+      Result := False;
+      Exit;
+    end;
+end;
+
+function DefaultDir(Param: String): String;
+begin
+  Result := ExpandConstant('{localappdata}\Programs\AIRA');
+  if not IsAscii(GetShortName(ExpandConstant('{localappdata}'))) then
+    Result := ExpandConstant('{sd}\AIRA');
+end;
+
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   Data: String;

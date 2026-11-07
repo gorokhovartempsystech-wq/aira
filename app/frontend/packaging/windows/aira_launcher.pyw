@@ -30,7 +30,7 @@ PG_BIN = APP / "pgsql" / "bin"
 FRONTEND = APP / "app" / "frontend"
 MODEL = APP / "app" / "backend" / "ml_bundle"
 DATA = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "AIRA"
-PGDATA, RUNTIME, LOGS, STATE = DATA / "pgdata", DATA / "runtime", DATA / "logs", DATA / "state.json"
+RUNTIME, LOGS, STATE = DATA / "runtime", DATA / "logs", DATA / "state.json"   # база — см. pg_paths()
 APP_PORT, PG_PORT = 47017, 47432          # постоянный адрес — чтобы браузер помнил настройки AIRA
 NO_WINDOW = 0x08000000
 MUTEX = "AIRA-Launcher"
@@ -72,32 +72,80 @@ def pick_port(preferred):
 
 
 # ---------- PostgreSQL ----------
+# PostgreSQL на Windows не работает с русскими буквами в путях (например, профиль «C:\Users\Анна»):
+# initdb вставляет путь в SQL в кодировке Windows и падает с «invalid byte sequence for encoding UTF8».
+# Поэтому ему передаются только латинские пути: короткие имена Windows (8.3) или запасная папка.
+def short_path(p):
+    p = Path(p)
+    if str(p).isascii():
+        return p
+    buf = ctypes.create_unicode_buffer(1024)
+    if ctypes.windll.kernel32.GetShortPathNameW(str(p), buf, 1024) and buf.value.isascii():
+        return Path(buf.value)
+    return None
+
+
+_pg = None
+
+
+def pg_paths():
+    """bin, share, каталог базы и журнал PostgreSQL — только латиницей."""
+    global _pg
+    if _pg:
+        return _pg
+    bin_, share = short_path(PG_BIN), short_path(APP / "pgsql" / "share")
+    if not bin_ or not share:
+        raise LaunchError("AIRA установлена в папку с русскими буквами в пути, а база данных так не работает. "
+                          "Переустановите AIRA в папку латиницей, например C:\\AIRA.")
+    DATA.mkdir(parents=True, exist_ok=True)
+    LOGS.mkdir(parents=True, exist_ok=True)
+    home, logs = short_path(DATA), short_path(LOGS)
+    if not home:
+        import hashlib
+
+        user = hashlib.sha256(os.environ.get("USERNAME", "user").encode()).hexdigest()[:10]
+        home = Path(os.environ.get("PROGRAMDATA", r"C:\ProgramData")) / "AIRA" / user
+        home.mkdir(parents=True, exist_ok=True)
+        logs = home
+        print("non-ASCII profile path without 8.3 names; database in", home, flush=True)
+    _pg = {"bin": bin_, "share": share, "data": home / "pgdata", "log": (logs or home) / "postgres.log"}
+    print("postgres paths:", {k: str(v) for k, v in _pg.items()}, flush=True)
+    return _pg
+
+
+def pg(cmd, *args):
+    # Английские сообщения PostgreSQL: русские на Windows приходят в другой кодировке и не читаются в журнале.
+    return run([pg_paths()["bin"] / cmd, *args], env=dict(os.environ, LC_MESSAGES="C"))
+
+
 def pg_running():
-    return run([PG_BIN / "pg_ctl.exe", "status", "-D", PGDATA]).returncode == 0
+    return pg("pg_ctl.exe", "status", "-D", pg_paths()["data"]).returncode == 0
 
 
 def pg_port_from_pid():
     try:
-        return int((PGDATA / "postmaster.pid").read_text().splitlines()[3])
+        return int((pg_paths()["data"] / "postmaster.pid").read_text().splitlines()[3])
     except Exception:
         return None
 
 
 def start_postgres(say):
-    if not (PGDATA / "PG_VERSION").exists():
+    p = pg_paths()
+    if not (p["data"] / "PG_VERSION").exists():
         say("Первый запуск: готовим базу данных…")
-        r = run([PG_BIN / "initdb.exe", "-D", PGDATA, "-U", "postgres", "-A", "trust", "-E", "UTF8", "--locale=C"])
+        r = pg("initdb.exe", "-D", p["data"], "-L", p["share"], "-U", "postgres", "-A", "trust", "-E", "UTF8",
+               "--locale=C")
         if r.returncode:
             raise LaunchError("Не удалось создать базу данных AIRA.")
     if pg_running():
         port = pg_port_from_pid()
         if port:
             return port
-        run([PG_BIN / "pg_ctl.exe", "stop", "-D", PGDATA, "-m", "fast", "-w"])
+        pg("pg_ctl.exe", "stop", "-D", p["data"], "-m", "fast", "-w")
     say("Запускаем базу данных…")
     port = pick_port(PG_PORT)
-    r = run([PG_BIN / "pg_ctl.exe", "start", "-D", PGDATA, "-w", "-t", "90", "-l", LOGS / "postgres.log",
-             "-o", f"-p {port} -c listen_addresses=127.0.0.1"])
+    r = pg("pg_ctl.exe", "start", "-D", p["data"], "-w", "-t", "90", "-l", p["log"],
+           "-o", f"-p {port} -c listen_addresses=127.0.0.1")
     if r.returncode:
         raise LaunchError("Не удалось запустить базу данных AIRA.")
     import psycopg
@@ -109,8 +157,12 @@ def start_postgres(say):
 
 
 def stop_postgres():
-    if (PGDATA / "PG_VERSION").exists() and pg_running():
-        run([PG_BIN / "pg_ctl.exe", "stop", "-D", PGDATA, "-m", "fast", "-w", "-t", "60"])
+    try:
+        p = pg_paths()
+    except LaunchError:
+        return
+    if (p["data"] / "PG_VERSION").exists() and pg_running():
+        pg("pg_ctl.exe", "stop", "-D", p["data"], "-m", "fast", "-w", "-t", "60")
 
 
 class LaunchError(Exception):
@@ -192,6 +244,10 @@ class Server:
 
 # ---------- окно управления ----------
 def main():
+    if "--stop-db" in sys.argv:  # вызывает деинсталлятор: остановить базу, если она осталась после сбоя
+        open_log()
+        stop_postgres()
+        return
     kernel = ctypes.windll.kernel32
     kernel.CreateMutexW(None, False, MUTEX)
     if kernel.GetLastError() == 183:  # AIRA уже запущена — просто открыть её
