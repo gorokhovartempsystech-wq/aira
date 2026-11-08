@@ -216,7 +216,7 @@ def clear_stuck_run(pg_port, run_id):
 # ---------- сервер ----------
 class Server:
     def __init__(self):
-        self.server = self.thread = self.url = None
+        self.server = self.thread = self.url = self.connection = None
         self.error = None
 
     def start(self, pg_port, say):
@@ -234,6 +234,7 @@ class Server:
         app = aira_host.build_app(database_url=f"postgresql+psycopg://postgres@127.0.0.1:{pg_port}/aira",
                                   runtime_root=RUNTIME, port=port, analysis=analysis, initialize=True,
                                   on_ready=ready.set, log_file=LOGS / "aira.log")
+        self.connection = dict(app.state.aira_connection)
         config = uvicorn.Config(app, host="127.0.0.1", port=port, access_log=False, log_level="info")
         self.server = uvicorn.Server(config)
 
@@ -263,24 +264,189 @@ class Server:
             pass
 
 
-# ---------- окно управления ----------
-def main():
-    if "--stop-db" in sys.argv:  # вызывает деинсталлятор: остановить базу, если она осталась после сбоя
-        open_log()
-        stop_postgres()
-        return
-    kernel = ctypes.windll.kernel32
-    kernel.CreateMutexW(None, False, MUTEX)
-    if kernel.GetLastError() == 183:  # AIRA уже запущена — просто открыть её
-        for _ in range(100):
-            try:
-                webbrowser.open(json.loads(STATE.read_text(encoding="utf-8"))["url"])
-                return
-            except Exception:
-                time.sleep(0.3)
-        return
+# ---------- запуск базы и сервера (общий для окна приложения и запасного режима) ----------
+def boot_backend(server, state, say, ask):
+    state["pg"] = start_postgres(say)
+    try:
+        return server.start(state["pg"], say)
+    except Exception as e:
+        code = getattr(e, "code", None) or getattr(server.error, "code", None)
+        run_id = stuck_failed_run(state["pg"]) if code == "recovery_required" else None
+        if not run_id:
+            raise
+        if not ask("AIRA", "Прошлая проверка завершилась сбоем, и AIRA заблокировала новые проверки.\n\n"
+                           "Снять блокировку? Документы и результаты не пострадают."):
+            raise
+        clear_stuck_run(state["pg"], run_id)
+        server.__init__()
+        return server.start(state["pg"], say)
 
-    log = open_log()
+
+def shutdown_backend(server):
+    try:
+        server.stop()
+        stop_postgres()
+    finally:
+        print("AIRA stopped", flush=True)
+
+
+def version():
+    try:
+        return (APP / "launcher" / "VERSION").read_text(encoding="utf-8").strip()
+    except OSError:
+        return "dev"
+
+
+# ---------- окно приложения (WebView2 через pywebview) ----------
+SPLASH = """<!doctype html><html lang="ru"><head><meta charset="utf-8"><style>
+html,body{margin:0;height:100%;font:15px/1.5 "Segoe UI",system-ui,sans-serif;background:#f4f5f8;color:#101828}
+.box{height:100%;display:grid;place-items:center;text-align:center}
+.card{background:#fff;border:1px solid #e4e7ec;border-radius:16px;padding:34px 40px;box-shadow:0 8px 24px rgba(16,24,40,.08);min-width:340px}
+h1{margin:10px 0 6px;font-size:22px}#s{color:#475467;margin:0}
+.sp{width:28px;height:28px;border:3px solid #e4e7ec;border-top-color:#4f5bd5;border-radius:50%;margin:18px auto 0;animation:r 1s linear infinite}
+@keyframes r{to{transform:rotate(360deg)}}.err .sp{display:none}.err #s{color:#c2352b}
+button{margin-top:16px;font:inherit;padding:7px 16px;border-radius:9px;border:1px solid #cfd4dd;background:#fff;cursor:pointer;display:none}
+.err button{display:inline-block}
+</style></head><body><div class="box"><div class="card" id="c"><img src="LOGO" width="56" height="56" alt="">
+<h1>AIRA</h1><p id="s">Запуск…</p><div class="sp"></div>
+<button onclick="window.pywebview.api.open_logs()">Открыть журнал</button></div></div>
+<script>window.setStatus=(t,e)=>{document.getElementById('s').textContent=t;document.getElementById('c').className=e?'card err':'card';}</script>
+</body></html>"""
+
+
+class DesktopApi:
+    """Методы для страницы (window.pywebview.api.*): подключение, системные окна файлов, закрытие."""
+
+    def __init__(self, ctx):
+        self._ctx = ctx
+
+    def connection(self):
+        return self._ctx["server"].connection
+
+    def app_version(self):
+        return version()
+
+    def open_logs(self):
+        os.startfile(str(LOGS))
+
+    def open_docx(self):
+        import base64
+
+        import webview
+
+        paths = self._ctx["window"].create_file_dialog(webview.FileDialog.OPEN, allow_multiple=False,
+                                                       file_types=("Документы Word (*.docx)", "Все файлы (*.*)"))
+        if not paths:
+            return None
+        path = Path(paths[0] if isinstance(paths, (list, tuple)) else paths)
+        data = path.read_bytes()
+        if len(data) > 32 * 1024 * 1024:
+            return {"name": path.name, "b64": "", "too_big": True}
+        return {"name": path.name, "b64": base64.b64encode(data).decode("ascii")}
+
+    def save_file(self, name, b64, kind="docx"):
+        import base64
+
+        import webview
+
+        types = ("Документ Word (*.docx)",) if kind == "docx" else ("Текстовый файл (*.txt)",)
+        path = self._ctx["window"].create_file_dialog(webview.FileDialog.SAVE, save_filename=name, file_types=types)
+        if not path:
+            return {"saved": False}
+        path = Path(path[0] if isinstance(path, (list, tuple)) else path)
+        path.write_bytes(base64.b64decode(b64))
+        return {"saved": True, "path": str(path)}
+
+    def close_result(self, ok):
+        # Ответ страницы на запрос закрытия: prepareToClose() дописал правки (ok) или пользователь остаётся.
+        print(f"close requested, page answered: {ok}", flush=True)
+        self._ctx["closing"] = False
+        if ok:
+            self._ctx["allow_close"] = True
+            threading.Thread(target=self._ctx["window"].destroy, daemon=True).start()
+
+
+def set_window_icon(title):
+    """У окна pywebview значок Python: ставим значок AIRA (окно и панель задач)."""
+    user = ctypes.windll.user32
+    user.FindWindowW.restype = ctypes.c_void_p
+    user.LoadImageW.restype = ctypes.c_void_p
+    user.SendMessageW.argtypes = [ctypes.c_void_p, ctypes.c_uint, ctypes.c_void_p, ctypes.c_void_p]
+    for _ in range(50):
+        hwnd = user.FindWindowW(None, title)
+        if hwnd:
+            for size, which in ((16, 0), (32, 1)):
+                icon = user.LoadImageW(None, str(APP / "launcher" / "aira.ico"), 1, size, size, 0x10)
+                if icon:
+                    user.SendMessageW(hwnd, 0x80, ctypes.c_void_p(which), ctypes.c_void_p(icon))
+            return
+        time.sleep(0.1)
+
+
+def run_desktop(log):
+    import webview
+
+    ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("AIRA.Desktop")
+    ctx = {"server": Server(), "state": {"pg": None}, "allow_close": False, "closing": False, "window": None}
+    logo = "data:image/png;base64," + __import__("base64").b64encode((FRONTEND / "static" / "logo.png").read_bytes()).decode()
+    window = webview.create_window("AIRA", html=SPLASH.replace("LOGO", logo), js_api=DesktopApi(ctx),
+                                   width=1380, height=900, min_size=(1000, 640))
+    ctx["window"] = window
+
+    def say(text, error=False):
+        try:
+            window.evaluate_js(f"window.setStatus && window.setStatus({json.dumps(text)}, {json.dumps(error)})")
+        except Exception:
+            pass
+
+    def ask(title, text):
+        return window.create_confirmation_dialog(title, text)
+
+    def on_closing():
+        server = ctx["server"]
+        if ctx["allow_close"] or not server.url:
+            return True
+        if not ctx["closing"]:
+            ctx["closing"] = True
+            # Спросить страницу: она допишет правки (prepareToClose) и ответит через close_result().
+            def request():
+                # run_js не ждёт ответа: окно может закрыться раньше, чем evaluate_js вернётся.
+                run = getattr(window, "run_js", None) or window.evaluate_js
+                try:
+                    run("window.__airaRequestClose ? window.__airaRequestClose() : window.pywebview.api.close_result(true)")
+                except Exception:
+                    ctx["closing"] = False
+            threading.Thread(target=request, daemon=True).start()
+        return False
+
+    window.events.closing += on_closing
+
+    def boot():
+        threading.Thread(target=set_window_icon, args=("AIRA",), daemon=True).start()
+        try:
+            url = boot_backend(ctx["server"], ctx["state"], say, ask)
+            window.load_url(url + "#desktop")
+            if os.environ.get("AIRA_SELFTEST"):  # самопроверка сборки: загрузка страницы и закрытие окна
+                time.sleep(int(os.environ.get("AIRA_SELFTEST") or 12))
+                probe = window.evaluate_js(
+                    "JSON.stringify({url: location.href, app: !document.getElementById('app').hidden, "
+                    "start: !document.getElementById('start').hidden, native: !!(window.__airaRequestClose), "
+                    "licence: !document.getElementById('licence').hidden, tour: !!document.querySelector('.tour')})")
+                print("selftest page:", probe, flush=True)
+                window.destroy()
+        except Exception as e:  # noqa: BLE001
+            traceback.print_exc()
+            msg = str(e) if isinstance(e, LaunchError) else "AIRA не запустилась."
+            say(f"{msg} Подробности — в журнале.", True)
+
+    try:
+        webview.start(boot, gui="edgechromium", private_mode=False, storage_path=str(DATA / "webview"))
+    finally:
+        shutdown_backend(ctx["server"])
+
+
+# ---------- запасной режим: окно управления + браузер (если нет WebView2) ----------
+def run_browser(log):
     import tkinter as tk
     from tkinter import messagebox
 
@@ -303,49 +469,39 @@ def main():
     status = tk.StringVar(value="Запуск…")
     tk.Label(pad, textvariable=status, font=("Segoe UI", 10), bg="#ffffff", fg="#475467", wraplength=300,
              justify="left").grid(row=1, column=1, sticky="w")
-    hint = tk.Label(pad, text="AIRA открывается в браузере. Не закрывайте это окно, пока работаете: "
-                              "оно управляет сервером на этом компьютере.",
-                    font=("Segoe UI", 9), bg="#ffffff", fg="#667085", wraplength=360, justify="left")
-    hint.grid(row=2, column=0, columnspan=2, sticky="w", pady=(14, 12))
+    tk.Label(pad, text="AIRA открывается в браузере. Не закрывайте это окно, пока работаете: "
+                       "оно управляет сервером на этом компьютере.",
+             font=("Segoe UI", 9), bg="#ffffff", fg="#667085", wraplength=360, justify="left").grid(
+        row=2, column=0, columnspan=2, sticky="w", pady=(14, 12))
     buttons = tk.Frame(pad, bg="#ffffff")
     buttons.grid(row=3, column=0, columnspan=2, sticky="e")
-    server = Server()
-    state = {"pg": None, "busy": True}
+    server, state = Server(), {"pg": None}
 
-    def say(text):
+    def say(text, error=False):
         root.after(0, status.set, text)
 
-    def open_app():
-        if server.url:
-            webbrowser.open(server.url)
+    def ask(title, text):
+        box, done = {}, threading.Event()
 
-    open_btn = tk.Button(buttons, text="Открыть AIRA", command=open_app, state="disabled", font=("Segoe UI", 10),
-                         bg="#4f5bd5", fg="#ffffff", activebackground="#4250c4", activeforeground="#ffffff",
-                         relief="flat", padx=14, pady=5)
+        def show():
+            box["ok"] = messagebox.askyesno(title, text, parent=root)
+            done.set()
+        root.after(0, show)
+        done.wait()
+        return box["ok"]
+
+    open_btn = tk.Button(buttons, text="Открыть AIRA", command=lambda: server.url and webbrowser.open(server.url),
+                         state="disabled", font=("Segoe UI", 10), bg="#4f5bd5", fg="#ffffff",
+                         activebackground="#4250c4", activeforeground="#ffffff", relief="flat", padx=14, pady=5)
     quit_btn = tk.Button(buttons, text="Выйти", font=("Segoe UI", 10), relief="groove", padx=14, pady=4)
-    log_btn = tk.Button(buttons, text="Журнал", font=("Segoe UI", 10), relief="groove", padx=10, pady=4,
-                        command=lambda: os.startfile(str(LOGS)))  # папка с aira.log — её присылать разработчикам
-    log_btn.pack(side="left", padx=(0, 8))
+    tk.Button(buttons, text="Журнал", font=("Segoe UI", 10), relief="groove", padx=10, pady=4,
+              command=lambda: os.startfile(str(LOGS))).pack(side="left", padx=(0, 8))
     open_btn.pack(side="left", padx=(0, 8))
     quit_btn.pack(side="left")
 
     def boot():
         try:
-            state["pg"] = start_postgres(say)
-            try:
-                url = server.start(state["pg"], say)
-            except Exception as e:
-                code = getattr(e, "code", None) or getattr(server.error, "code", None)
-                run_id = stuck_failed_run(state["pg"]) if code == "recovery_required" else None
-                if not run_id:
-                    raise
-                ok = ask("AIRA", "Прошлая проверка завершилась сбоем, и AIRA заблокировала новые проверки.\n\n"
-                                 "Снять блокировку? Документы и результаты не пострадают.")
-                if not ok:
-                    raise
-                clear_stuck_run(state["pg"], run_id)
-                server.__init__()
-                url = server.start(state["pg"], say)
+            url = boot_backend(server, state, say, ask)
             say("AIRA работает.")
             root.after(0, lambda: open_btn.configure(state="normal"))
             if not os.environ.get("AIRA_NO_BROWSER"):  # для автотестов сборки
@@ -354,19 +510,6 @@ def main():
             traceback.print_exc()
             msg = str(e) if isinstance(e, LaunchError) else "AIRA не запустилась."
             say(f"{msg} Подробности — в журнале: {log}")
-        finally:
-            state["busy"] = False
-
-    def ask(title, text):
-        box = {}
-        done = threading.Event()
-
-        def show():
-            box["ok"] = messagebox.askyesno(title, text, parent=root)
-            done.set()
-        root.after(0, show)
-        done.wait()
-        return box["ok"]
 
     def quit_app(source="button"):
         print(f"quit requested: {source}", flush=True)
@@ -382,10 +525,8 @@ def main():
 
         def stop():
             try:
-                server.stop()
-                stop_postgres()
+                shutdown_backend(server)
             finally:
-                print("AIRA stopped", flush=True)
                 root.after(0, root.destroy)
         threading.Thread(target=stop, daemon=True).start()
 
@@ -393,6 +534,53 @@ def main():
     root.protocol("WM_DELETE_WINDOW", lambda: quit_app("window close"))
     threading.Thread(target=boot, name="aira-boot", daemon=True).start()
     root.mainloop()
+
+
+def focus_running():
+    """AIRA уже запущена: вывести её окно вперёд (или открыть в браузере в запасном режиме)."""
+    user = ctypes.windll.user32
+    user.FindWindowW.restype = ctypes.c_void_p
+    hwnd = user.FindWindowW(None, "AIRA")
+    if hwnd:
+        user.ShowWindow(ctypes.c_void_p(hwnd), 9)
+        user.SetForegroundWindow(ctypes.c_void_p(hwnd))
+        return
+    for _ in range(100):
+        try:
+            webbrowser.open(json.loads(STATE.read_text(encoding="utf-8"))["url"])
+            return
+        except Exception:
+            time.sleep(0.3)
+
+
+def main():
+    if "--stop-db" in sys.argv:  # вызывает деинсталлятор: остановить базу, если она осталась после сбоя
+        open_log()
+        stop_postgres()
+        return
+    kernel = ctypes.windll.kernel32
+    kernel.CreateMutexW(None, False, MUTEX)
+    if kernel.GetLastError() == 183:
+        focus_running()
+        return
+    log = open_log()
+    mode = "browser" if os.environ.get("AIRA_BROWSER_MODE") or "--browser" in sys.argv else "desktop"
+    if mode == "desktop":
+        try:
+            import webview  # noqa: F401
+        except Exception:
+            traceback.print_exc()
+            mode = "browser"
+    print("ui mode:", mode, flush=True)
+    if mode == "desktop":
+        try:
+            run_desktop(log)
+            return
+        except Exception:
+            # Нет WebView2 или окно не создалось: продолжаем в браузере.
+            traceback.print_exc()
+            print("desktop window failed, falling back to browser mode", flush=True)
+    run_browser(log)
 
 
 if __name__ == "__main__":

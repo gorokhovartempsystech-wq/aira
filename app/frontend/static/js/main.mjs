@@ -46,7 +46,8 @@ async function boot() {
   app.workspace = createConnectedWorkspace({ ...conn, onState: () => onWorkspaceState() });
   app.importer = createConnectedImporter({ ...conn, onState: () => scheduleRender() });
   app.host.onCloseRequest(prepareToClose);
-  window.addEventListener('beforeunload', e => {
+  // В окне приложения закрытие обрабатывает onCloseRequest (prepareToClose); в браузере — предупреждение вкладки.
+  if (!app.host.native) window.addEventListener('beforeunload', e => {
     if (anyUnconfirmed()) { e.preventDefault(); e.returnValue = ''; for (const ed of app.editors.values()) void ed.flushAll(); }
   });
   setInterval(checkLicenceQuietly, 60000);
@@ -167,6 +168,7 @@ async function importDocument() {
   const picked = await app.host.openDocx();
   if (!picked) return;
   // Bytes from the shell may come from another JS realm; the client checks `instanceof Uint8Array`.
+  if (picked.tooBig) { toast('Файл больше 32 МБ — его нельзя импортировать.', 'warn'); return; }
   const file = { name: String(picked.name || 'document.docx'), bytes: new Uint8Array(picked.bytes) };
   if (!/\.docx$/i.test(file.name)) {
     toast(/\.doc$/i.test(file.name) ? 'Формат .doc не поддерживается. Сохраните файл в Word как .docx.' : 'AIRA открывает только документы Word в формате .docx.', 'warn', { ms: 6000 });
@@ -733,7 +735,11 @@ async function downloadLog() {
     if (!r.ok) throw new Error(String(r.status));
     const name = (r.headers.get('Content-Disposition') || '').match(/filename="([^"]+)"/)?.[1] || 'aira-log.txt';
     const bytes = new Uint8Array(await r.arrayBuffer());
-    if (app.host.saveFile) { await app.host.saveFile(name, bytes, 'text/plain'); return; }
+    if (app.host.saveFile) {
+      const res = await app.host.saveFile(name, bytes, 'text/plain');
+      if (res?.saved) toast(`Журнал сохранён: ${res.path}. Отправьте этот файл разработчикам.`, 'ok', { ms: 7000 });
+      return;
+    }
     const url = URL.createObjectURL(new Blob([bytes], { type: 'text/plain' }));
     const a = h('a', { href: url, download: name });
     document.body.append(a); a.click(); a.remove();

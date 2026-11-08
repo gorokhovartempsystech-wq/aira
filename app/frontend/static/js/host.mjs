@@ -12,7 +12,7 @@
 // it from /aira/connection and falls back to browser file input / download.
 
 export async function connectHost() {
-  const native = window.airaHost || null;
+  const native = window.airaHost || await desktopBridge();
   let conn;
   if (native?.connection) conn = await native.connection();
   else {
@@ -34,9 +34,46 @@ export async function connectHost() {
     native: !!native,
     openDocx: native?.openDocx ? () => native.openDocx() : browserPick,
     saveDocx: native?.saveDocx ? (n, b) => native.saveDocx(n, b) : browserDownload,
+    saveFile: native?.saveFile ? (n, b, type) => native.saveFile(n, b, type) : null,
     onCloseRequest: handler => {
       if (native?.onCloseRequest) native.onCloseRequest(handler);
     },
+  };
+}
+
+// Окно приложения AIRA для Windows (pywebview + WebView2, packaging/windows/aira_launcher.pyw):
+// мост window.pywebview.api превращается в тот же контракт window.airaHost.
+async function desktopBridge() {
+  if (!location.hash.includes('desktop') && !window.pywebview) return null;
+  if (!window.pywebview?.api?.connection) {
+    await new Promise(resolve => { window.addEventListener('pywebviewready', resolve, { once: true }); setTimeout(resolve, 8000); });
+  }
+  const api = window.pywebview?.api;
+  if (!api?.connection) return null;
+  const toB64 = bytes => {
+    let s = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    return btoa(s);
+  };
+  const fromB64 = b64 => Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+  let closeHandler = null;
+  // Окно спрашивает перед закрытием; ответ — через close_result (Python не дожидается промисов из evaluate_js).
+  window.__airaRequestClose = async () => {
+    let ok = true;
+    try { if (closeHandler) ok = await closeHandler(); } catch { ok = false; }
+    api.close_result(!!ok);
+  };
+  return {
+    desktop: true,
+    connection: () => api.connection(),
+    openDocx: async () => {
+      const r = await api.open_docx();
+      if (!r) return null;
+      return r.too_big ? { name: r.name, bytes: new Uint8Array(0), tooBig: true } : { name: r.name, bytes: fromB64(r.b64) };
+    },
+    saveDocx: (name, bytes) => api.save_file(name, toB64(bytes), 'docx'),
+    saveFile: async (name, bytes) => api.save_file(name, toB64(bytes), 'txt'),
+    onCloseRequest: handler => { closeHandler = handler; },
   };
 }
 

@@ -87,6 +87,8 @@ def frontend_routes(app, port, *, dev=False, dev_pages=None, log_file=None):
     from fastapi.staticfiles import StaticFiles
 
     token = secrets.token_hex(32)
+    # Окну приложения (pywebview) запускатель передаёт это через мост, а не через /aira/connection.
+    app.state.aira_connection = {"origin": f"http://127.0.0.1:{port}", "sessionToken": token}
 
     @app.get("/aira/diagnostics/log", include_in_schema=False)
     def download_log(request: Request):

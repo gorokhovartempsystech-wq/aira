@@ -39,7 +39,7 @@ $req = Join-Path $Out 'requirements-runtime.txt'
 # Только то, что нужно для работы: без инструментов тестов и проверки кода.
 Get-Content (Join-Path $repo 'app\backend\requirements.lock') | Where-Object { $_ -notmatch '^(pytest|ruff|iniconfig|pluggy|Pygments)==' } | Set-Content $req -Encoding ascii
 & $py -m pip install --disable-pip-version-check --no-warn-script-location -q --target "$stage\python\Lib\site-packages" `
-  -r $req -r (Join-Path $repo 'engine\requirements-engine.txt')
+  -r $req -r (Join-Path $repo 'engine\requirements-engine.txt') -r (Join-Path $here 'requirements-desktop.txt')
 if ($LASTEXITCODE) { throw 'pip install failed' }
 Remove-Item -Recurse -Force "$stage\python\Lib\site-packages\bin" -ErrorAction SilentlyContinue
 
