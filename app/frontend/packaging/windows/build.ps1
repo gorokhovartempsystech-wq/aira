@@ -61,6 +61,7 @@ Copy-Item (Join-Path $repo 'app\frontend\aira_host.py') "$stage\app\frontend\air
 New-Item -ItemType Directory -Force "$stage\launcher" | Out-Null
 Copy-Item (Join-Path $here 'aira_launcher.pyw') "$stage\launcher\aira_launcher.pyw"
 Copy-Item (Join-Path $here 'THIRD-PARTY.txt') "$stage\launcher\THIRD-PARTY.txt"
+Set-Content "$stage\launcher\VERSION" $Version -Encoding ascii
 # Иконка: PNG-логотип внутри ICO.
 & $py -c @"
 import struct, sys

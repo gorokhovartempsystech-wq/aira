@@ -45,7 +45,28 @@ def open_log():
     stream = open(log, "a", encoding="utf-8", buffering=1)
     sys.stdout = sys.stderr = stream
     print(f"\n===== {time.strftime('%Y-%m-%d %H:%M:%S')} AIRA start, app={APP}", flush=True)
+    print_environment()
     return log
+
+
+def print_environment():
+    """Сведения о системе для разбора проблем на чужом компьютере (без имён файлов документов)."""
+    import locale
+    import platform
+
+    try:
+        version = (APP / "launcher" / "VERSION").read_text(encoding="utf-8").strip()
+    except OSError:
+        version = "dev"
+    k = ctypes.windll.kernel32
+    info = {
+        "aira": version, "windows": platform.platform(), "python": sys.version.split()[0],
+        "ansi_codepage": k.GetACP(), "oem_codepage": k.GetOEMCP(), "locale": locale.getlocale(),
+        "user_ascii": os.environ.get("USERNAME", "").isascii(), "app_ascii": str(APP).isascii(),
+        "data_ascii": str(DATA).isascii(), "model": (MODEL / "models" / "manifest.json").exists(),
+        "cpus": os.cpu_count(), "tz": time.strftime("%z"),
+    }
+    print("environment:", info, flush=True)
 
 
 def run(cmd, **kw):
@@ -212,7 +233,7 @@ class Server:
         ready = threading.Event()
         app = aira_host.build_app(database_url=f"postgresql+psycopg://postgres@127.0.0.1:{pg_port}/aira",
                                   runtime_root=RUNTIME, port=port, analysis=analysis, initialize=True,
-                                  on_ready=ready.set)
+                                  on_ready=ready.set, log_file=LOGS / "aira.log")
         config = uvicorn.Config(app, host="127.0.0.1", port=port, access_log=False, log_level="info")
         self.server = uvicorn.Server(config)
 
@@ -302,6 +323,9 @@ def main():
                          bg="#4f5bd5", fg="#ffffff", activebackground="#4250c4", activeforeground="#ffffff",
                          relief="flat", padx=14, pady=5)
     quit_btn = tk.Button(buttons, text="Выйти", font=("Segoe UI", 10), relief="groove", padx=14, pady=4)
+    log_btn = tk.Button(buttons, text="Журнал", font=("Segoe UI", 10), relief="groove", padx=10, pady=4,
+                        command=lambda: os.startfile(str(LOGS)))  # папка с aira.log — её присылать разработчикам
+    log_btn.pack(side="left", padx=(0, 8))
     open_btn.pack(side="left", padx=(0, 8))
     quit_btn.pack(side="left")
 

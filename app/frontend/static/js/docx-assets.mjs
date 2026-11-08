@@ -6,6 +6,54 @@ const R = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
 const A = 'http://schemas.openxmlformats.org/drawingml/2006/main';
 const WP = 'http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing';
 const V = 'urn:schemas-microsoft-com:vml';
+const M = 'http://schemas.openxmlformats.org/officeDocument/2006/math';
+
+// Элементы Word, из-за которых бэкенд не принимает проверку (not_admitted, unsupported_analysis_content).
+// Проверено на бэкенде main от 5 ноября 2026; современные надписи (wps) и исправления проверку не блокируют.
+export const BLOCKERS = [
+  { ns: W, tag: 'softHyphen', label: 'мягкие переносы', fix: 'Ctrl+H → «Больше» → «Специальный» → «Мягкий перенос» (^-), заменить на пустое' },
+  { ns: W, tag: 'noBreakHyphen', label: 'неразрывные дефисы', fix: 'Ctrl+H → найти ^~ и заменить на обычный дефис' },
+  { ns: W, tag: 'sym', label: 'символы из «Вставка → Символ»', fix: 'заменить обычными знаками или удалить' },
+  { ns: W, tag: 'ptab', label: 'позиционные табуляции', fix: 'заменить обычной табуляцией' },
+  { ns: M, tag: 'oMath', label: 'формулы', fix: 'записать обычным текстом' },
+  { ns: V, tag: 'textbox', label: 'надписи старого формата', fix: 'перенести текст из надписи в обычный абзац' },
+];
+const STYLE_NAMES = { title: 'Название', subtitle: 'Подзаголовок', normal: 'Обычный', header: 'Верхний колонтитул', footer: 'Нижний колонтитул' };
+// Свойства стилей абзацев, на которых проверка тоже отказывает (найдено на шаблоне Word для Mac):
+// рамка абзаца (pBdr, как у стиля «Название») и нумерация без списка (numPr без numId, как у «Подзаголовка»).
+function styleBlockers(doc, styles) {
+  if (!doc || !styles) return [];
+  const byId = new Map(Array.from(styles.getElementsByTagNameNS(W, 'style')).map(s => [s.getAttributeNS(W, 'styleId'), s]));
+  const used = new Map();
+  for (const p of Array.from(doc.getElementsByTagNameNS(W, 'p'))) {
+    const ps = kids(p, W, 'pStyle')[0];
+    const id = ps ? ps.getAttributeNS(W, 'val') : null;
+    if (id) used.set(id, (used.get(id) || 0) + 1);
+  }
+  const out = [];
+  for (const [id, count] of used) {
+    let border = false, badList = false;
+    for (let s = byId.get(id), guard = 0; s && guard < 20; guard++) {
+      const ppr = Array.from(s.children).find(c => c.localName === 'pPr');
+      if (ppr && ppr.getElementsByTagNameNS(W, 'pBdr').length) border = true;
+      const num = ppr && ppr.getElementsByTagNameNS(W, 'numPr')[0];
+      if (num && !num.getElementsByTagNameNS(W, 'numId').length) badList = true;
+      const base = Array.from(s.children).find(c => c.localName === 'basedOn');
+      s = base ? byId.get(base.getAttributeNS(W, 'val')) : null;
+    }
+    const raw = byId.get(id)?.getElementsByTagNameNS(W, 'name')[0]?.getAttributeNS(W, 'val') || id;
+    const name = `«${STYLE_NAMES[raw.toLowerCase()] || raw}»`;
+    if (border) out.push({ tag: `pBdr:${id}`, count, label: `рамка абзаца в стиле ${name}`,
+      fix: `выделите эти абзацы → «Главная» → «Границы» → «Нет границы» или примените к ним другой стиль` });
+    if (badList) out.push({ tag: `numPr:${id}`, count, label: `незавершённая нумерация в стиле ${name}`,
+      fix: 'примените к этим абзацам другой стиль, например «Обычный» или «Заголовок 2»' });
+  }
+  return out;
+}
+const findBlockers = (doc, styles) => [
+  ...BLOCKERS.map(b => ({ ...b, count: doc.getElementsByTagNameNS(b.ns, b.tag).length })).filter(b => b.count),
+  ...styleBlockers(doc, styles),
+];
 const MIME = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', bmp: 'image/bmp',
   webp: 'image/webp', svg: 'image/svg+xml' };
 const dec = new TextDecoder();
@@ -85,7 +133,8 @@ function readStyles(doc) {
 export async function readDocxAssets(bytes) {
   const get = await unzip(bytes);
   const numbering = readNumbering(xml(await get('word/numbering.xml')));
-  const styles = readStyles(xml(await get('word/styles.xml')));
+  const stylesXml = xml(await get('word/styles.xml'));
+  const styles = readStyles(stylesXml);
   const images = new Map();
   const urls = [];
   const doc = xml(await get('word/document.xml'));
@@ -122,7 +171,7 @@ export async function readDocxAssets(bytes) {
     let i = 0;
     for (const child of Array.from(doc.documentElement.children)) await walk(child, [i++]);
   }
-  return { numbering, styles, images, revoke() { urls.forEach(u => URL.revokeObjectURL(u)); } };
+  return { numbering, styles, images, blockers: doc ? findBlockers(doc, stylesXml) : [], revoke() { urls.forEach(u => URL.revokeObjectURL(u)); } };
 }
 
 // Marker text for a list paragraph: bullet or computed number ("1.", "2.1." …).

@@ -4,9 +4,9 @@ import { $, h, icon, toast, modal, overlay, fmtTime, sleep } from './ui.mjs';
 import { connectHost } from './host.mjs';
 import { createApi } from './api.mjs';
 import { DocEditor, MSG } from './editor.mjs';
-import { createReviewPanel } from './review.mjs';
+import { createReviewPanel, blockersNode } from './review.mjs';
 import { buildExampleDocx, EXAMPLE_TITLE } from './example-docx.mjs';
-import { meerkat, mascotAlert } from './mascot.mjs';
+import { meerkat, mascotAlert, sound, oyoy } from './mascot.mjs';
 import { runTour, tourActive } from './tour.mjs';
 
 const MAX_DOCX = 32 * 1024 * 1024;
@@ -153,6 +153,7 @@ const titleOf = id => docInfo(id)?.title || (app.examples.has(id) ? EXAMPLE_TITL
 const isExample = id => app.examples.has(id) || docInfo(id)?.title === EXAMPLE_TITLE;
 app.isExample = isExample;
 app.refreshDocs = () => refreshDocs();
+app.why = (e, fallback, context) => why(e, fallback, context);
 
 async function createDocument() {
   const r = await modal({ title: 'Новый документ', body: 'Документ создаётся по шаблону AIRA: обычный текст, три уровня заголовков и списки.',
@@ -202,12 +203,12 @@ async function withImporter(fn, failMessage, onCreated) {
     await refreshDocs();
     ov.close();
     await openDocument(meta.document_id);
-  } catch {
+  } catch (e) {
     ov.close();
     const s = app.importer.status();
     if (s.canRetry) toast('Сервер не подтвердил операцию. Повторите — документ не задвоится.', 'error', {
       ms: 10000, action: { label: 'Повторить', run: () => withImporter(() => app.importer.retry(), failMessage, onCreated) } });
-    else toast(failMessage, 'error', { ms: 6000 });
+    else toast(why(e, failMessage, /импорт/i.test(failMessage) ? 'import' : 'create'), 'error', { ms: 7000 });
   }
 }
 
@@ -215,6 +216,22 @@ async function withImporter(fn, failMessage, onCreated) {
    Tabs: open / switch / close (F11, F12)
    ========================================================= */
 const tabOf = id => app.workspace.status().tabs.find(t => t.documentId === id);
+
+// Понятное объяснение ошибки клиентских модулей бэкенда (DocxClientError: code + HTTP-статус) и запись в журнал.
+// Раньше почти везде показывалось общее «не удалось», и терялась разница между «нет связи», «занято» и т. п.
+function why(e, fallback, context = '') {
+  const code = e?.code, status = e?.status;
+  postDiag('error', `${context}: ${fallback} [${code || e?.name || 'error'}${status ? ' ' + status : ''}]`);
+  if (code === 'transport_error' || e instanceof TypeError) return 'Нет связи с сервером AIRA. Проверьте, что окно AIRA открыто, или перезапустите AIRA.';
+  if (code === 'session_expired') return 'Сеанс правки устарел. Закройте документ и откройте его снова.';
+  if (code === 'conflict' || status === 409) return 'Документ изменился в другом месте. Закройте его и откройте снова.';
+  if (status === 413) return context === 'import' ? 'Файл слишком большой для импорта.' : 'Открыто слишком много документов. Закройте лишние и повторите.';
+  if (status === 422 && context === 'import') return 'Этот файл Word не удаётся прочитать. Откройте его в Word, сохраните заново как .docx и повторите.';
+  if (status === 503) return 'Сервер AIRA занят или ещё запускается. Повторите через минуту.';
+  if (code === 'busy') return `${fallback} AIRA ещё выполняет предыдущее действие — повторите через секунду.`;
+  if (status >= 500) return `${fallback} Ошибка на сервере AIRA — подробности в журнале (меню «?» → «Скачать журнал»).`;
+  return fallback;
+}
 
 async function openDocument(id) {
   if (app.editors.has(id)) { app.workspace.focus(id); activate(id); return; }
@@ -226,7 +243,7 @@ async function openDocument(id) {
     let tab = tabOf(id);
     if (tab?.phase === 'open_uncertain') {
       toast('Не удалось подтвердить открытие документа.', 'error', { action: { label: 'Повторить', run: async () => {
-        try { await app.workspace.retryOpen(id); await attachEditor(id); } catch { toast('Документ не открылся.', 'error'); }
+        try { await app.workspace.retryOpen(id); await attachEditor(id); } catch (e) { toast(why(e, 'Документ не открылся.', 'open'), 'error'); }
       } } });
       return;
     }
@@ -250,8 +267,8 @@ async function openDocument(id) {
       return;
     }
     await attachEditor(id);
-  } catch {
-    toast('Документ не удалось открыть.', 'error');
+  } catch (e) {
+    toast(why(e, 'Документ не удалось открыть.', 'open'), 'error', { ms: 7000 });
   } finally {
     app.opening = null;
     scheduleRender();
@@ -261,14 +278,43 @@ async function openDocument(id) {
 async function attachEditor(id) {
   const ed = new DocEditor({ documentId: id, workspace: app.workspace, api: app.api,
     isLocked: () => app.licenceLocked,
-    onChange: kind => { if (kind === 'projection') review.highlights(id); scheduleRender(); },
+    onChange: kind => {
+      if (kind === 'projection') review.highlights(id);
+      if (kind === 'local' || kind === 'projection') scheduleAutosave(id);
+      scheduleRender();
+    },
     onFindingClick: fid => review.select(id, fid, false) });
   app.editors.set(id, ed);
   activate(id);
-  try { await ed.load(); } catch { toast('Не удалось загрузить содержимое документа.', 'error'); }
+  try { await ed.load(); } catch (e) { toast(why(e, 'Не удалось загрузить содержимое документа.', 'load'), 'error'); }
   review.ensureLoaded(id);
   scheduleRender();
   setTimeout(() => maybeDocTour(), 700);
+}
+
+// Автосохранение: 5 секунд без правок — версия документа сохраняется сама (как кнопка «Сохранить», но молча).
+const AUTOSAVE_MS = 5000;
+const autosaveTimers = new Map();
+function scheduleAutosave(id) {
+  clearTimeout(autosaveTimers.get(id));
+  autosaveTimers.set(id, setTimeout(() => autosave(id), AUTOSAVE_MS));
+}
+async function autosave(id) {
+  autosaveTimers.delete(id);
+  const ed = app.editors.get(id);
+  if (!ed || ed.disposed || ed.laneError) return;
+  let c;
+  try { c = app.workspace.client(id); } catch { return; }
+  const s = c.editor.status();
+  // Идёт ввод, отправка правки или запуск проверки — попробуем ещё раз чуть позже.
+  if (ed.localPending || ed.queued || s.busy || ['saving', 'admitting'].includes(c.analysis.status().phase)) { scheduleAutosave(id); return; }
+  if (!s.dirty) return;
+  try {
+    await ed.flushAll();
+    if (!ed.laneError && c.editor.status().dirty) { await c.editor.save(); void refreshDocs(); }
+  } catch {
+    // Ошибку покажет строка статуса и ручное «Сохранить»; следующая правка снова запустит автосохранение.
+  } finally { scheduleRender(); }
 }
 
 // Обучение по документу — при первом открытии, когда на экране нет окон и другого обучения.
@@ -296,6 +342,28 @@ function showStart() {
   scheduleRender();
 }
 
+// Клиент бэкенда считает «остановимой» и проверку, которую сервер не принял (not_admitted): она не идёт.
+const isRunning = a => a.canStop && a.phase !== 'not_admitted';
+
+// Тупик клиентского модуля бэкенда: после отказа (not_admitted) он держит проверку «остановимой» и «повторяемой»,
+// а закрытие вкладки, экспорт и closeAll этого не допускают; dispose() снаружи недоступен. Выйти из этого
+// состояния модуль не даёт, поэтому такую вкладку сохраняем и закрываем только в интерфейсе: на сервере
+// ничего не выполняется, текст сохранён. Полностью сервер закроет её при следующем запуске AIRA.
+const refusedCheck = id => { try { return app.workspace.client(id).analysis.status().phase === 'not_admitted'; } catch { return false; } };
+async function saveRefused(id) {
+  const editor = app.workspace.client(id).editor;
+  if (editor.status().dirty) await editor.save();
+  return !editor.status().dirty;
+}
+// Вместо workspace.closeAll(): тот останавливается на первой «застрявшей» вкладке и не закрывает остальные.
+async function closeAllTabs() {
+  for (const t of app.workspace.status().tabs) {
+    if (t.phase !== 'open') continue;
+    if (refusedCheck(t.documentId)) { if (!await saveRefused(t.documentId)) throw new Error('unsaved'); continue; }
+    await app.workspace.close(t.documentId);
+  }
+}
+
 async function waitFor(cond, ms = 15000) {
   const end = Date.now() + ms;
   while (!cond()) { if (Date.now() > end) return false; await sleep(80); }
@@ -307,12 +375,12 @@ async function closeDocument(id) {
   if (!ed) return;
   await ed.flushAll();
   const c = app.workspace.client(id);
-  if (c.analysis.status().canStop) {
+  if (isRunning(c.analysis.status())) {
     const r = await modal({ title: 'Идёт проверка', body: 'Остановить проверку и закрыть документ?',
       actions: [{ id: 'cancel', label: 'Отмена' }, { id: 'stop', label: 'Остановить и закрыть', kind: 'primary' }] });
     if (r?.id !== 'stop') return;
     try { await c.analysis.stop(); } catch { /* checked below */ }
-    if (!await waitFor(() => !c.analysis.status().canStop && !c.analysis.status().busy, 20000)) {
+    if (!await waitFor(() => !isRunning(c.analysis.status()) && !c.analysis.status().busy, 20000)) {
       toast('Проверка ещё останавливается. Закройте документ чуть позже.', 'warn'); return;
     }
   }
@@ -325,20 +393,27 @@ async function closeDocument(id) {
   }
   await waitFor(() => { const s = c.editor.status(); return !s.busy; }, 15000);
   try {
+    if (refusedCheck(id)) {
+      if (!await saveRefused(id)) throw new Error('unsaved');
+      detach(id);
+      return;
+    }
     await app.workspace.close(id);
-  } catch {
+  } catch (e) {
     const tab = tabOf(id);
     if (tab?.phase === 'close_uncertain') {
       toast('Не удалось подтвердить закрытие. Изменения не удалены.', 'error', { action: { label: 'Повторить', run: async () => {
-        try { await app.workspace.retryClose(id); detach(id); } catch { toast('Закрытие пока не подтверждено.', 'error'); }
+        try { await app.workspace.retryClose(id); detach(id); } catch (e) { toast(why(e, 'Закрытие пока не подтверждено.', 'close'), 'error'); }
       } } });
-    } else toast('Документ сейчас занят — попробуйте закрыть ещё раз.', 'warn');
+    } else toast(why(e, 'Документ сейчас занят — попробуйте закрыть ещё раз.', 'close'), 'warn');
     return;
   }
   detach(id);
 }
 
 function detach(id) {
+  clearTimeout(autosaveTimers.get(id));
+  autosaveTimers.delete(id);
   app.editors.get(id)?.dispose();
   app.editors.delete(id);
   if (app.activeId === id) {
@@ -363,10 +438,10 @@ async function saveDocument(id = app.activeId, { quiet = false } = {}) {
     if (!quiet) toast('Документ сохранён', 'ok');
     void refreshDocs();
     return true;
-  } catch {
+  } catch (e) {
     if (editor.status().canRetry) toast('Сохранение не подтверждено. Изменения не потеряны.', 'error', { ms: 10000,
-      action: { label: 'Повторить', run: async () => { try { await editor.retry(); toast('Документ сохранён', 'ok'); } catch { toast('Сохранение снова не подтверждено.', 'error'); } scheduleRender(); } } });
-    else toast('Не удалось сохранить документ: сейчас идёт другая операция. Повторите через секунду.', 'error');
+      action: { label: 'Повторить', run: async () => { try { await editor.retry(); toast('Документ сохранён', 'ok'); } catch (e) { toast(why(e, 'Сохранение снова не подтверждено.', 'save'), 'error'); } scheduleRender(); } } });
+    else toast(why(e, 'Не удалось сохранить документ.', 'save'), 'error', { ms: 7000 });
     return false;
   } finally { scheduleRender(); }
 }
@@ -388,14 +463,22 @@ async function exportDocument() {
   };
   const ov = overlay('Готовим DOCX…');
   try {
+    if (refusedCheck(id)) {
+      // Модуль экспорта заблокирован отказом проверки: выгружаем сохранённую версию напрямую.
+      if (!await saveRefused(id)) throw new Error('unsaved');
+      const bytes = new Uint8Array(await app.api.savedBytes(id));
+      ov.close();
+      await finish({ bytes });
+      return;
+    }
     const result = await files.exportDocx();
     ov.close();
     await finish(result);
-  } catch {
+  } catch (e) {
     ov.close();
     if (files.status().canRetry) toast('Экспорт не завершён: версия для выгрузки не подтверждена.', 'error', { ms: 10000,
-      action: { label: 'Повторить', run: async () => { try { await finish(await files.retry()); } catch { toast('Экспорт снова не удался.', 'error'); } } } });
-    else toast('Не удалось подготовить DOCX. Повторите через секунду.', 'error');
+      action: { label: 'Повторить', run: async () => { try { await finish(await files.retry()); } catch (e) { toast(why(e, 'Экспорт снова не удался.', 'export'), 'error'); } } } });
+    else toast(why(e, 'Не удалось подготовить DOCX.', 'export'), 'error', { ms: 7000 });
   } finally { scheduleRender(); }
 }
 
@@ -417,18 +500,19 @@ async function prepareToClose() {
     for (const [id, ed] of app.editors) if (ed.laneError) throw new Error('lane');
     for (const id of app.editors.keys()) {
       const a = app.workspace.client(id).analysis;
-      if (a.status().canStop) { try { await a.stop(); } catch { /* wait below */ } }
-      await waitFor(() => !a.status().canStop && !a.status().busy, 20000);
+      if (isRunning(a.status())) { try { await a.stop(); } catch { /* wait below */ } }
+      await waitFor(() => !isRunning(a.status()) && !a.status().busy, 20000);
     }
     for (const id of app.editors.keys()) await waitFor(() => !app.workspace.client(id).editor.status().busy, 15000);
-    await app.workspace.closeAll();
+    await closeAllTabs();
     for (const ed of app.editors.values()) ed.dispose();
     app.editors.clear();
     showStart(); // закрытые документы больше не перерисовываются, если окно ещё не закрылось
     ov.close();
     return true;
-  } catch {
+  } catch (e) {
     ov.close();
+    postDiag('error', `prepareToClose: ${e?.code || e?.message || e}`);
     const r = await modal({ title: 'Не удалось завершить запись',
       body: 'AIRA не получила подтверждение, что последние изменения записаны. Если закрыть приложение сейчас, их можно потерять.',
       actions: [{ id: 'stay', label: 'Не закрывать', kind: 'primary' }, { id: 'retry', label: 'Повторить' }], dismissable: false });
@@ -470,7 +554,7 @@ function renderChrome() {
 function renderSidebar() {
   const tabs = app.workspace.status().tabs.filter(t => app.editors.has(t.documentId) || t.documentId === app.opening);
   const statusOf = id => {
-    try { const c = app.workspace.client(id); return { dirty: c.editor.status().dirty, checking: c.analysis.status().canStop }; }
+    try { const c = app.workspace.client(id); return { dirty: c.editor.status().dirty, checking: isRunning(c.analysis.status()) }; }
     catch { return { dirty: false, checking: false }; }
   };
   const all = app.docs.filter(d => !isExample(d.document_id))
@@ -553,6 +637,15 @@ function renderToolbar() {
   $('[data-cmd="numbered"]').classList.toggle('on', block?.list === 'number');
   const proj = ed.projection;
   $('#doc-notice').hidden = !proj?.has_unprojected_content;
+  // Заранее предупредить, если в DOCX есть элементы, из-за которых бэкенд не примет проверку.
+  const blockers = ed.assets?.blockers || [];
+  const bkey = JSON.stringify([id, blockers.map(b => [b.tag, b.count])]);
+  if ($('#check-notice').dataset.key !== bkey) {
+    $('#check-notice').dataset.key = bkey;
+    $('#check-notice').hidden = !blockers.length;
+    $('#check-notice .body').replaceChildren(...(blockers.length ? [h('strong', {}, 'Проверка этого документа не запустится. '),
+      'В нём есть элементы Word, которые модель пока не читает:', blockersNode(blockers)] : []));
+  }
   $("#example-banner").hidden = !isExample(id);
 }
 
@@ -620,6 +713,37 @@ function startTour(kind) {
   renderChrome();
 }
 
+/* ---------- Журнал диагностики ---------- */
+// События интерфейса (сообщения сурката, ошибки скриптов) — в журнал сервера (aira.log), без текста документов.
+function postDiag(kind, message) {
+  if (!app.host?.sessionToken) return;
+  try {
+    void fetch('/aira/diagnostics/client', { method: 'POST', credentials: 'omit', keepalive: true,
+      headers: { 'Content-Type': 'application/json', 'X-AIRA-Session': app.host.sessionToken },
+      body: JSON.stringify({ kind, message: String(message).slice(0, 800) }) }).catch(() => {});
+  } catch { /* журнал не обязателен */ }
+}
+window.addEventListener('aira:alert', e => postDiag(e.detail.kind, e.detail.message));
+window.addEventListener('error', e => postDiag('js-error', `${e.message} @${(e.filename || '').split('/').pop()}:${e.lineno}`));
+window.addEventListener('unhandledrejection', e => postDiag('js-rejection', e.reason?.code || e.reason?.message || e.reason));
+
+async function downloadLog() {
+  try {
+    const r = await fetch('/aira/diagnostics/log', { cache: 'no-store', credentials: 'omit', headers: { 'X-AIRA-Session': app.host.sessionToken } });
+    if (!r.ok) throw new Error(String(r.status));
+    const name = (r.headers.get('Content-Disposition') || '').match(/filename="([^"]+)"/)?.[1] || 'aira-log.txt';
+    const bytes = new Uint8Array(await r.arrayBuffer());
+    if (app.host.saveFile) { await app.host.saveFile(name, bytes, 'text/plain'); return; }
+    const url = URL.createObjectURL(new Blob([bytes], { type: 'text/plain' }));
+    const a = h('a', { href: url, download: name });
+    document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+    toast(`Журнал сохранён в «Загрузки»: ${name}. Отправьте этот файл разработчикам.`, 'ok', { ms: 7000 });
+  } catch {
+    toast('Не удалось получить журнал. Он лежит в папке %LOCALAPPDATA%\\AIRA\\logs (кнопка «Журнал» в окне AIRA).', 'error', { ms: 9000 });
+  }
+}
+
 // Меню кнопки «?»: обучение и учебный пример.
 function helpMenu() {
   if ($('.help-menu')) { $('.help-menu').remove(); return; }
@@ -627,7 +751,14 @@ function helpMenu() {
   const menu = h('div', { class: 'help-menu', role: 'menu' },
     item('help', app.activeId ? 'Обучение: работа с документом' : 'Пройти обучение', () => startTour(app.activeId ? 'doc' : 'start')),
     app.activeId ? item('help', 'Обучение: стартовый экран', () => startTour('start')) : null,
-    item('book', 'Открыть учебный пример', () => openExample()));
+    item('book', 'Открыть учебный пример', () => openExample()),
+    h('div', { class: 'menu-sep' }),
+    item(sound.on ? 'volume' : 'volume-off', sound.on ? 'Звук сурката: включён' : 'Звук сурката: выключен', () => {
+      sound.on = !sound.on;
+      if (sound.on) oyoy(true);
+      toast(sound.on ? 'Сурикат снова говорит «Ой-ёй!» при ошибках.' : 'Звук сурката выключен.', 'info');
+    }),
+    item('download', 'Скачать журнал для разработчиков', () => downloadLog()));
   const r = $('#help-btn').getBoundingClientRect();
   Object.assign(menu.style, { top: `${r.bottom + 6}px`, right: `${innerWidth - r.right}px` });
   const away = e => { if (!menu.contains(e.target) && !e.target.closest('#help-btn')) close(); };

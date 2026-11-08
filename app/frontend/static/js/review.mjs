@@ -28,7 +28,31 @@ const ERRORS = {
   source_corrupt: 'Не удалось прочитать сохранённую версию документа.',
   interrupted: 'Проверка прервалась.',
   not_ready: 'Модель ещё не готова к работе.',
+  // Причины, по которым бэкенд не принимает проверку (error_code в ответе «not_admitted»).
+  unsupported_analysis_content: 'Проверка пока не поддерживает часть содержимого этого документа Word (например, сложные поля, надписи или исправления).',
+  unsupported_document: 'Проверка пока не поддерживает часть содержимого этого документа Word.',
+  unsupported_package: 'Проверка пока не поддерживает часть содержимого этого документа Word.',
+  invalid_package: 'Не удалось прочитать файл документа для проверки.',
+  empty_document: 'В документе нет текста для проверки.',
+  model_unavailable: 'Модель недоступна: её файлы не найдены или повреждены. Переустановите AIRA.',
+  model_input_limit_exceeded: 'Документ слишком большой для модели.',
+  recovery_required: 'Проверки заблокированы после сбоя. Перезапустите AIRA (кнопка «Выйти» в окне AIRA) — при запуске она предложит снять блокировку.',
+  storage_error: 'Не удалось прочитать документ из базы. Попробуйте ещё раз.',
+  validation_error: 'Сервер отклонил запрос проверки. Сохраните документ и попробуйте ещё раз.',
+  source_mismatch: 'Документ изменился во время запуска проверки. Сохраните и проверьте снова.',
+  analysis_busy: 'Сервер сейчас занят. Повторите через минуту.',
+  analysis_history_exhausted: 'Для этого документа накопилось слишком много проверок.',
+  analysis_clock_error: 'Не удалось проверить системное время компьютера.',
 };
+// Что именно в DOCX мешает проверке и как это убрать в Word (см. BLOCKERS в docx-assets.mjs).
+export function blockersNode(blockers) {
+  return h('div', { class: 'blockers' },
+    h('ul', {}, blockers.map(b => h('li', {}, h('strong', {}, `${b.label[0].toUpperCase()}${b.label.slice(1)} — ${b.count}. `), `Как убрать в Word: ${b.fix}.`))),
+    h('p', {}, 'Исправьте документ в Word и загрузите его заново через «Импорт из Word». В AIRA эти элементы удалить нельзя.'));
+}
+
+// Понятный текст причины; для неизвестной показываем код — его можно прислать разработчикам.
+const reason = (code, fallback) => ERRORS[code] || (code ? `${fallback} Код причины: ${code}.` : fallback);
 const RUNNING = new Set(['saving', 'admitting', 'waiting', 'poll_error']);
 
 const countsKey = run => `aira.counts.${run}`;
@@ -91,6 +115,8 @@ export function createReviewPanel({ body, rail, app }) {
     const client = app.workspace.client(id);
     if (app.licenceLocked) { toast('Лицензия не подтверждена — новая проверка недоступна.', 'warn'); return; }
     if (ed.isEmpty()) { toast('Введите текст требований — проверять пока нечего.', 'warn'); return; }
+    // Известные элементы Word, на которых бэкенд откажет: не отправляем запрос, чтобы вкладка не застряла в отказе.
+    if (ed.assets?.blockers?.length) { toast('Проверка этого документа не запустится: в нём есть элементы Word, которые модель пока не читает. Подробности — над текстом документа.', 'warn', { ms: 7000 }); return; }
     await ed.flushAll();
     if (ed.laneError) { toast('Сначала завершите сохранение правки (кнопка «Повторить» вверху).', 'warn'); return; }
     st(id).active = null;
@@ -98,7 +124,7 @@ export function createReviewPanel({ body, rail, app }) {
     catch { app.render(); }
   }
 
-  const act = (fn, failMsg) => async () => { try { await fn(); } catch { if (failMsg) toast(failMsg, 'error'); } finally { app.render(); } };
+  const act = (fn, failMsg) => async () => { try { await fn(); } catch (e) { if (failMsg) toast(app.why ? app.why(e, failMsg, 'review') : failMsg, 'error'); } finally { app.render(); } };
 
   function highlights(id) {
     const ed = app.editors.get(id);
@@ -137,7 +163,7 @@ export function createReviewPanel({ body, rail, app }) {
     const a = client.analysis.status(), r = client.review.status(), s = st(id);
     const key = JSON.stringify([id, a.phase, a.receipt?.state?.status, a.receipt?.state?.stage, a.stopRequested, a.canStop,
       a.canRetryAdmission, a.canRetrySave, a.busy, r.phase, r.busy, r.canRetry, r.stale, r.canHighlight,
-      r.review?.view_sha256, r.review?.preferences.revision, s.active, s.loading, s.loadFailed, s.questionsOnly, editor.isEmpty(), app.licenceLocked]);
+      r.review?.view_sha256, r.review?.preferences.revision, s.active, s.loading, s.loadFailed, s.questionsOnly, editor.isEmpty(), app.licenceLocked, (editor.assets?.blockers || []).length]);
     renderRail(a, r);
     if (key === lastKey) { tick(a); return; }
     lastKey = key;
@@ -185,19 +211,25 @@ export function createReviewPanel({ body, rail, app }) {
       if (a.receipt?.fixture) box.append(fixtureNote());
       return box;
     }
-    const empty = editor.isEmpty();
-    box.append(h('button', { class: 'check-btn', disabled: empty || app.licenceLocked || a.busy || !a.canCheck,
+    const empty = editor.isEmpty(), blocked = !!editor.assets?.blockers?.length;
+    box.append(h('button', { class: 'check-btn', disabled: empty || blocked || app.licenceLocked || a.busy || !a.canCheck,
       onclick: () => runCheck(id) }, icon('scan'), r.review ? 'Проверить снова' : 'Проверить', h('kbd', {}, 'Ctrl+Enter')));
     if (empty) box.append(h('p', { class: 'note' }, 'Введите или вставьте текст требований — проверять пока нечего.'));
+    else if (blocked) box.append(h('p', { class: 'note' }, 'Проверка недоступна: в документе есть элементы Word, которые модель пока не читает. Что исправить — над текстом документа.'));
 
     if (a.phase === 'save_uncertain') box.append(problem('Не удалось подтвердить сохранение версии для проверки.', 'Повторить', () => client.analysis.retrySave()));
     else if (a.phase === 'save_error') box.append(problem('Не удалось сохранить версию для проверки. Текст не потерян.', null));
     else if (a.phase === 'admission_uncertain') box.append(problem('Не удалось подтвердить запуск проверки.', 'Повторить запуск', () => client.analysis.retryAdmission()));
-    else if (a.phase === 'not_admitted') box.append(problem(ERRORS[a.receipt?.error_code] || 'Проверка не запущена.', null));
+    else if (a.phase === 'not_admitted') {
+      const code = a.receipt?.error_code, blockers = editor.assets?.blockers || [];
+      const p = problem(reason(code, 'Проверка не запущена.'), code === 'unsupported_analysis_content' && blockers.length ? null : 'Проверить ещё раз', () => runCheck(id));
+      if (code === 'unsupported_analysis_content' && blockers.length) p.querySelector('div').append(blockersNode(blockers));
+      box.append(p);
+    }
     else if (a.phase === 'finished' && state && state.status !== 'succeeded') {
       const msg = state.status === 'cancelled' ? 'Проверка остановлена. Предыдущий результат сохранён.'
         : state.status === 'timed_out' ? 'Проверка не уложилась в 5 минут. Предыдущий результат сохранён.'
-        : `${ERRORS[state.error_code] || 'Проверка не завершилась.'} Текст сохранён.`;
+        : `${reason(state.error_code, 'Проверка не завершилась.')} Текст сохранён.`;
       box.append(problem(msg, state.status === 'cancelled' ? null : 'Проверить ещё раз', () => runCheck(id)));
     }
     return box;

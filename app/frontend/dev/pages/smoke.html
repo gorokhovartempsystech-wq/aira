@@ -98,6 +98,72 @@ async function run(w, d) {
     return;
   }
 
+  if (s === 'blockers') {
+    // DOCX with soft hyphens, a Word symbol and a formula: AIRA warns up front and does not send the check.
+    const app = w.AIRA.debug, name = 'С переносами ' + Date.now() % 100000;
+    const bytes = new w.Uint8Array(await (await fetch('sample-blockers.docx')).arrayBuffer());
+    await app.importer.importDocx(name, bytes);
+    await app.refreshDocs();
+    (await until(() => $$('#doc-list .doc-link').find(b => b.textContent.includes(name)))).click();
+    await until(() => !$('#check-notice').hidden, 20000);
+    await sleep(500);
+    report.log.push({ notice: $$('#check-notice li').map(x => x.textContent.split('.')[0]), checkDisabled: $('.check-btn').disabled,
+      note: $('.check .note')?.textContent });
+    d.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', ctrlKey: true, bubbles: true }));
+    await sleep(600);
+    report.log.push({ phase: app.workspace.client(app.activeId).analysis.status().phase, pop: $('.mk-pop .mk-msg')?.textContent });
+    return;
+  }
+
+  if (s === 'refused') {
+    // The backend refuses a check AIRA did not foresee (local-refused.docx, kept out of git):
+    // the reason is shown, and the document can still be closed, exported and the app closed.
+    const app = w.AIRA.debug, name = 'Отказ проверки ' + Date.now() % 100000;
+    const bytes = new w.Uint8Array(await (await fetch('local-refused.docx')).arrayBuffer());
+    await app.importer.importDocx(name, bytes);
+    await app.refreshDocs();
+    (await until(() => $$('#doc-list .doc-link').find(b => b.textContent.includes(name)))).click();
+    await until(() => $('.check-btn') && !$('.check-btn').disabled, 20000);
+    $('.check-btn').click();
+    await until(() => $('.check .alert.error'), 30000);
+    await sleep(800);
+    const a = app.workspace.client(app.activeId).analysis.status();
+    report.log.push({ phase: a.phase, code: a.receipt?.error_code, panel: $$('.check .alert.error p').map(x => x.textContent).join(' | '),
+      sidebarSpinner: !!$('#open-list .spinner') });
+    let captured = null;
+    app.host.saveDocx = async (n, b) => { captured = { size: b.byteLength, zip: b[0] === 0x50 }; return { saved: true, path: 'C:/test/' + n }; };
+    $('#export-btn').click();
+    await until(() => captured || $$('.mk-pop').length, 20000);
+    report.log.push({ export: captured });
+    $$('#open-list .doc-item').find(li => li.textContent.includes(name)).querySelector('.icon-btn').click();
+    await sleep(1500);
+    report.log.push({ closePrompt: $('.modal h2')?.textContent || null, stillOpen: $$('#open-list .doc-item').some(li => li.textContent.includes(name)) });
+    // Reopen in the same session, then let the harness close the app (prepareToClose must succeed).
+    (await until(() => $$('#doc-list .doc-link').find(b => b.textContent.includes(name)))).click();
+    await until(() => $$('#open-list .doc-item').some(li => li.textContent.includes(name)), 20000);
+    report.log.push({ reopened: true, closeAll: await w.AIRA.prepareToClose() });
+    return;
+  }
+
+  if (s === 'autosave') {
+    // No "Сохранить" click: 5 s after the last edit the version is saved by itself.
+    $('[data-start="create"]').click();
+    await until(() => $('.modal input'));
+    $('.modal input').value = 'Автосохранение';
+    $('.modal .btn.primary').click();
+    await until(() => $('#paper .doc .para'));
+    $('#paper .doc').focus();
+    w.getSelection().collapse($('#paper .doc .para'), 0);
+    d.execCommand('insertText', false, 'Система хранит не более 500 карточек.');
+    await sleep(1500);
+    const before = $('#save-status').textContent;
+    await sleep(3000);
+    const at4 = $('#save-status').textContent;
+    await until(() => $('#save-status').textContent.includes('Сохранено'), 15000);
+    report.log.push({ before, at4, after: $('#save-status').textContent, toasts: $$('.toast').length });
+    return;
+  }
+
   if (s === 'mascot') {
     // A real warning: Ctrl+Enter on an empty new document. The meerkat pops up instead of a toast.
     $('[data-start="create"]').click();
@@ -113,6 +179,13 @@ async function run(w, d) {
     const pop = $('.mk-pop');
     report.log.push({ pop: pop.className, title: pop.querySelector('.mk-title').textContent, msg: pop.querySelector('.mk-msg').textContent,
       mood: [...pop.querySelector('.meerkat').classList].find(c => c.startsWith('mood-')), toastsShown: $$('.toast').length });
+    // The meerkat message reaches the downloadable diagnostics log; without the session token the log is closed.
+    await sleep(500);
+    const token = w.AIRA.debug.host.sessionToken;
+    const logText = await (await fetch('/aira/diagnostics/log', { headers: { 'X-AIRA-Session': token } })).text();
+    const denied = (await fetch('/aira/diagnostics/log')).status;
+    report.log.push({ logHasUi: logText.includes('[ui] warn: Введите текст требований'), logLines: logText.split('\n').length, deniedWithoutToken: denied,
+      helpMenu: (() => { $('#help-btn').click(); const items = $$('.help-menu .menu-item').map(b => b.textContent); $('#help-btn').click(); return items; })() });
     // Hide a document from the list and bring it back.
     await w.AIRA.debug.refreshDocs(); await sleep(300);
     const item = $$('#doc-list .doc-item').find(li => li.textContent.includes(name));

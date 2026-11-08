@@ -19,6 +19,8 @@
   <symbol id="i-book" viewBox="0 0 24 24"><path d="M4 19V5a2 2 0 0 1 2-2h14v14H6a2 2 0 0 0-2 2 2 2 0 0 0 2 2h14"/><path d="M8 7h8M8 11h5"/></symbol>
   <symbol id="i-import" viewBox="0 0 24 24"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M12 11v7M9 15l3 3 3-3"/></symbol>
   <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></symbol>
+  <symbol id="i-volume" viewBox="0 0 24 24"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/></symbol>
+  <symbol id="i-volume-off" viewBox="0 0 24 24"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="m16 9.5 5 5M21 9.5l-5 5"/></symbol>
   <symbol id="i-save" viewBox="0 0 24 24"><path d="M5 3h11l5 5v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M7 3v5h8M7 21v-7h10v7"/></symbol>
   <symbol id="i-undo" viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></symbol>
   <symbol id="i-redo" viewBox="0 0 24 24"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></symbol>
@@ -69,7 +71,7 @@
       <button id="new-doc" class="btn primary block"><svg class="i"><use href="#i-plus"/></svg>Новый документ</button>
       <h2 class="side-h">Открытые</h2>
       <ul id="open-list" class="doc-list"></ul>
-      <h2 class="side-h">Документы</h2>
+      <h2 class="side-h">Недавние</h2>
       <ul id="doc-list" class="doc-list scroll"></ul>
       <button id="hidden-toggle" class="link side-foot" hidden></button>
     </aside>
@@ -102,6 +104,7 @@
         <div class="paper-scroll">
           <div id="example-banner" class="alert info doc-banner" hidden><svg class="i"><use href="#i-book"/></svg><div><strong>Учебный пример.</strong> Это не ваш документ: он нужен, чтобы посмотреть, как работает проверка. Нажмите «Проверить» справа.</div></div>
           <div id="doc-notice" class="alert info doc-banner" hidden><svg class="i"><use href="#i-info"/></svg><div>Часть содержимого Word (например, колонтитулы или сноски) здесь не показана. Она сохраняется в файле без изменений.</div></div>
+          <div id="check-notice" class="alert warn doc-banner" hidden><svg class="i"><use href="#i-alert"/></svg><div class="body"></div></div>
           <article id="paper" class="paper"></article>
         </div>
       </section>

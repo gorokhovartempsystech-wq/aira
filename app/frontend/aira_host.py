@@ -26,6 +26,17 @@ if str(BACKEND / "src") not in sys.path:
 USER, PROJECT, INSTALL = (UUID(int=i) for i in (501, 502, 503))
 NO_STORE = {"Cache-Control": "no-store"}
 
+# Последние строки диагностики — чтобы журнал можно было скачать из интерфейса и без файла (dev-стенд).
+from collections import deque  # noqa: E402
+
+DIAG = deque(maxlen=3000)
+
+
+def diag(line):
+    line = f"{time.strftime('%Y-%m-%d %H:%M:%S')} {line}"
+    DIAG.append(line)
+    print(line, flush=True)
+
 
 def private_root(root: Path) -> Path:
     """Каталог воркера анализа, доступный только текущему пользователю."""
@@ -70,11 +81,42 @@ def init_database(engine):
         ledger.provision_new_database(engine, installation_id=INSTALL, expected_revision=fence.revision)
 
 
-def frontend_routes(app, port, *, dev=False, dev_pages=None):
-    from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
+def frontend_routes(app, port, *, dev=False, dev_pages=None, log_file=None):
+    from fastapi import Request
+    from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, RedirectResponse
     from fastapi.staticfiles import StaticFiles
 
     token = secrets.token_hex(32)
+
+    @app.get("/aira/diagnostics/log", include_in_schema=False)
+    def download_log(request: Request):
+        # Журнал для разработчиков: окружение, запуски и отказы проверки. Только для страницы AIRA (токен сессии).
+        if not secrets.compare_digest(request.headers.get("x-aira-session", ""), token):
+            return JSONResponse({"code": "forbidden"}, status_code=403, headers=NO_STORE)
+        text = ""
+        if log_file and Path(log_file).is_file():
+            raw = Path(log_file).read_bytes()[-3_000_000:]
+            text = raw.decode("utf-8", errors="replace")
+        else:
+            text = "\n".join(DIAG) + "\n"
+        name = f"aira-log-{time.strftime('%Y%m%d-%H%M')}.txt"
+        return PlainTextResponse(text, headers={**NO_STORE, "Content-Disposition": f'attachment; filename="{name}"'})
+
+    @app.post("/aira/diagnostics/client", include_in_schema=False)
+    async def client_event(request: Request):
+        # Что увидел пользователь: сообщения сурката и ошибки интерфейса — в тот же журнал.
+        if not secrets.compare_digest(request.headers.get("x-aira-session", ""), token):
+            return JSONResponse({"code": "forbidden"}, status_code=403, headers=NO_STORE)
+        import json
+
+        try:
+            data = json.loads((await request.body())[:4000] or b"{}")
+        except ValueError:
+            data = {}
+        if isinstance(data, dict):
+            kind, message = str(data.get("kind", ""))[:20], str(data.get("message", ""))[:800].replace("\n", " ")
+            diag(f"[ui] {kind}: {message}")
+        return JSONResponse({}, headers=NO_STORE)
 
     @app.get("/aira/connection", include_in_schema=False)
     def connection():
@@ -135,7 +177,7 @@ def licence_stub_routes(app):
 
 
 def build_app(*, database_url, runtime_root, port, analysis="model", initialize=True,
-              licence_stub=False, dev=False, dev_pages=None, on_ready=None):
+              licence_stub=False, dev=False, dev_pages=None, on_ready=None, log_file=None):
     """Возвращает ASGI-приложение. Воркер анализа запускается и останавливается в lifespan."""
     from sqlalchemy import create_engine
 
@@ -158,7 +200,7 @@ def build_app(*, database_url, runtime_root, port, analysis="model", initialize=
     app = create_app(document_runtime=runtime, analysis_supervisor=supervisor, table_editor=True, field_editor=True)
     if licence_stub:
         licence_stub_routes(app)
-    frontend_routes(app, port, dev=dev, dev_pages=dev_pages)
+    frontend_routes(app, port, dev=dev, dev_pages=dev_pages, log_file=log_file)
     previous = app.router.lifespan_context
 
     @asynccontextmanager
@@ -185,7 +227,56 @@ def build_app(*, database_url, runtime_root, port, analysis="model", initialize=
             engine.dispose()
 
     app.router.lifespan_context = lifespan
+    app.add_middleware(DiagnosticLog)
     return app
+
+
+class DiagnosticLog:
+    """ASGI-прослойка для журнала (stdout → aira.log): запуски и отказы проверки, ошибки API с кодами.
+    Без токена сессии, тел запросов и текста документов; опросы идущей проверки не пишутся."""
+
+    QUIET_PHASES = {"admitting", "queued", "active", "settling"}
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http" or not scope.get("path", "").startswith(("/docx-documents", "/documents")):
+            return await self.app(scope, receive, send)
+        import json
+
+        path, method = scope["path"], scope.get("method", "")
+        analysis = "/analysis-" in path
+        state = {"status": 0, "body": b""}
+
+        async def capture(message):
+            if message["type"] == "http.response.start":
+                state["status"] = message["status"]
+            elif message["type"] == "http.response.body" and (analysis or state["status"] >= 400):
+                if len(state["body"]) < 8192:
+                    state["body"] += message.get("body", b"")[:8192]
+            await send(message)
+
+        try:
+            await self.app(scope, receive, capture)
+        finally:
+            status = state["status"]
+            if analysis or status >= 400:
+                try:
+                    data = json.loads(state["body"] or b"{}")
+                except ValueError:
+                    data = {}
+                run = data.get("state") or {} if isinstance(data, dict) else {}
+                phase = data.get("phase") if isinstance(data, dict) else None
+                quiet = (analysis and method == "GET" and status < 400 and phase in self.QUIET_PHASES) or (
+                    status == 404 and path.endswith("/analysis-review"))  # проверки ещё не было — это не ошибка
+                if not quiet:
+                    fields = {k: v for k, v in {
+                        "phase": phase, "error_code": data.get("error_code") if isinstance(data, dict) else None,
+                        "code": data.get("code") if isinstance(data, dict) else None,
+                        "run_status": run.get("status"), "run_error": run.get("error_code"),
+                        "execution": run.get("execution_kind")}.items() if v}
+                    diag(f"[api] {method} {path} -> {status} {fields}")
 
 
 class SupervisorError(RuntimeError):

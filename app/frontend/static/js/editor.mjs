@@ -324,6 +324,7 @@ export class DocEditor {
         }
         this.updateMarkers();
       }
+      this.onChange?.('assets');
     } catch {
       // Display-only data. Lists show bullets and objects show placeholders without it.
     } finally {

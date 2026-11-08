@@ -17,7 +17,7 @@ const ART = `
   <path class="mk-cream" d="M60 84 C 50 84 47 98 47 110 C 47 126 52 135 60 135 C 68 135 73 126 73 110 C 73 98 70 84 60 84 Z"/>
   <ellipse class="mk-dark-fur" cx="48" cy="140.5" rx="10" ry="4.5"/>
   <ellipse class="mk-dark-fur" cx="72" cy="140.5" rx="10" ry="4.5"/>
-  <path class="mk-scarf" d="M44 74 C 52 80 68 80 76 74 L74 81 C 70 84 66 85 64 85 L60 97 L56 85 C 54 85 50 84 46 81 Z"/>
+  <path class="mk-scarf" d="M44 74 C 52 80 68 80 76 74 L74 81 C 70 84 66 85 63.5 85.5 L60 106 L56.5 85.5 C 54 85 50 84 46 81 Z"/>
   <circle class="mk-scarf-knot" cx="60" cy="84.5" r="2.6"/>
 
   <g class="only s-idle s-happy s-wave">
@@ -60,6 +60,13 @@ const ART = `
       <path class="mk-line thick" d="M68 47.5 Q74 40.5 80 47.5"/>
     </g>
 
+    <g class="mk-glasses">
+      <path class="mk-frame" d="M36.5 44.5 L30.5 41.5 M83.5 44.5 L89.5 41.5"/>
+      <path class="mk-frame" d="M55.4 45 Q60 41.6 64.6 45"/>
+      <circle class="mk-lens" cx="46" cy="46" r="9.6"/>
+      <circle class="mk-lens" cx="74" cy="46" r="9.6"/>
+      <path class="mk-glint" d="M40.2 41.6 Q42.4 38.6 46 38.2 M68.2 41.6 Q70.4 38.6 74 38.2"/>
+    </g>
     <ellipse class="mk-cream" cx="60" cy="64" rx="13" ry="10"/>
     <ellipse class="mk-blush" cx="39" cy="60" rx="4.2" ry="2.6"/>
     <ellipse class="mk-blush" cx="81" cy="60" rx="4.2" ry="2.6"/>
@@ -118,12 +125,63 @@ export function lookAt(svg, x, y) {
   look(svg, dx / d, dy / d);
 }
 
+/* ---------- «Ой-ёй!» ---------- */
+// Голос Windows на русском, если он есть; иначе — короткий мультяшный сигнал. Не чаще раза в 3 секунды.
+export const sound = {
+  get on() { try { return localStorage.getItem('aira.sound') !== 'off'; } catch { return true; } },
+  set on(v) { try { localStorage.setItem('aira.sound', v ? 'on' : 'off'); } catch { /* только на этот сеанс */ } },
+};
+let lastSound = 0, audio = null;
+try { window.speechSynthesis?.getVoices(); } catch { /* голоса подгрузятся позже */ }
+
+export function oyoy(force = false) {
+  if ((!sound.on && !force) || Date.now() - lastSound < 3000) return;
+  lastSound = Date.now();
+  try {
+    const synth = window.speechSynthesis;
+    const voices = synth ? synth.getVoices() : [];
+    const ru = voices.find(v => /^ru/i.test(v.lang) && v.localService) || voices.find(v => /^ru/i.test(v.lang));
+    if (ru) {
+      const u = new SpeechSynthesisUtterance('Ой-ёй!');
+      Object.assign(u, { voice: ru, lang: ru.lang, rate: 1.2, pitch: 1.7, volume: 0.9 });
+      synth.cancel();
+      synth.speak(u);
+      return;
+    }
+  } catch { /* перейдём на сигнал */ }
+  chirp();
+}
+
+function chirp() {
+  try {
+    audio ||= new (window.AudioContext || window.webkitAudioContext)();
+    const t = audio.currentTime + 0.01;
+    // «ой» — вверх-вниз, «ёй» — ниже и с удивлённым подъёмом в конце
+    [[t, 0.17, 620, 880, 560], [t + 0.21, 0.24, 520, 760, 430]].forEach(([at, len, f0, f1, f2]) => {
+      const osc = audio.createOscillator(), gain = audio.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(f0, at);
+      osc.frequency.linearRampToValueAtTime(f1, at + len * 0.35);
+      osc.frequency.exponentialRampToValueAtTime(f2, at + len);
+      gain.gain.setValueAtTime(0.0001, at);
+      gain.gain.exponentialRampToValueAtTime(0.22, at + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, at + len);
+      osc.connect(gain).connect(audio.destination);
+      osc.start(at);
+      osc.stop(at + len + 0.02);
+    });
+  } catch { /* без звука */ }
+}
+
 /* ---------- Сурикат выглядывает из норки и показывает ошибку ---------- */
 let pop = null;
 
 const TITLES = { error: 'Ой, что-то пошло не так', warn: 'Так не получится' };
 
 export function mascotAlert(message, kind = 'error', { action = null, ms = 6000 } = {}) {
+  oyoy();
+  // Для журнала диагностики (main.mjs отправляет в aira.log): что именно увидел пользователь.
+  window.dispatchEvent(new CustomEvent('aira:alert', { detail: { kind, message } }));
   if (!pop) pop = buildPop();
   const p = pop;
   clearTimeout(p.timer);
