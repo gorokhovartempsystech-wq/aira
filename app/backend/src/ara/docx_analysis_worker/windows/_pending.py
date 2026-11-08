@@ -98,6 +98,8 @@ class PendingIO(LocalResource):
         elif status == 109 and self._kind == "read":
             # A pipe can already be closed when ReadFile starts, not only at completion.
             self._finish(IOResult("read", 0, b"", eof=True))
+        elif status in (109, 232, 233) and self._kind == "write":
+            self._finish(IOResult("write", 0, b"", eof=True))
         elif status not in (0, 997):
             self._finish(error=True)
             raise WindowsRuntimeError("runtime_unavailable")
@@ -132,6 +134,8 @@ class PendingIO(LocalResource):
                 result = IOResult(self._kind, 0, b"", aborted=True)
             elif status == 109 and self._kind == "read":
                 result = IOResult("read", 0, b"", eof=True)
+            elif status in (109, 232, 233) and self._kind == "write":
+                result = IOResult("write", 0, b"", eof=True)
             elif status == 0 and self._kind == "connect":
                 result = IOResult("connect", 0, b"")
             elif status == 0 and type(count) is int and 0 < count <= self._size:

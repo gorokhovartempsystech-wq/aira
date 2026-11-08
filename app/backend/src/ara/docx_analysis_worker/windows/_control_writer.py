@@ -41,6 +41,16 @@ class Writer:
                 return False
             result = op.poll()
             if result is not None:
+                if result.eof and command is not None:
+                    # The guardian retires the control pipe before sending its
+                    # closed status. Reject renewal but let the data reader
+                    # verify completion within the already accepted lease.
+                    with s.cv:
+                        s.control_eof = True
+                        if command.outcome == "pending":
+                            command.outcome = "rejected"
+                        s.cv.notify_all()
+                    return False
                 if result.aborted or result.eof or result.count != len(frame):
                     s.stop("transport", True)
                     return False
@@ -80,7 +90,7 @@ def run(state):
         while True:
             state.tick()
             with state.cv:
-                if state.stopped or state.closing or state.natural:
+                if state.stopped or state.closing or state.natural or state.control_eof:
                     break
                 command = state.command
                 if command is not None and command.outcome != "pending":

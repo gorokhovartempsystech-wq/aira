@@ -486,3 +486,33 @@ def test_native_guardian_death_rejects_reply_and_drains_owned_job(tmp_path, monk
         assert obj.close(15)
         assert owner.release_slot(slot)
         owner.close()
+
+
+
+def test_closed_control_pipe_during_renewal_leaves_completion_to_data_reader(runtime, monkeypatch):
+    _, _, holders, start = runtime
+    writer = importlib.import_module("ara.docx_analysis_worker.windows._control_writer")
+    from types import SimpleNamespace
+
+    original = writer.Writer.send
+
+    def send(self, lease, cutoff, command=None):
+        if command is not None:
+            self.endpoint = SimpleNamespace(
+                begin_write=lambda frame: SimpleNamespace(
+                    poll=lambda: SimpleNamespace(eof=True, aborted=False, count=0)
+                )
+            )
+        return original(self, lease, cutoff, command)
+
+    monkeypatch.setattr(writer.Writer, "send", send)
+    obj = start(lambda h: h.request.ready.clear())
+    until(lambda: obj.view().permit_ready)
+
+    assert not obj.renew(12_000_000_000)
+    assert obj._state.control_eof
+    assert obj._state.lease != 12_000_000_000
+    assert not obj.view().stop_requested
+    assert not obj.view().candidate_ready
+    assert not holders[0].stopped
+    assert not obj.renew(12_000_000_000)

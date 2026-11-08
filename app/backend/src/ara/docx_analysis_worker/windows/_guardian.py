@@ -100,7 +100,7 @@ class Lane:
         if result is None:
             return None
         self.operation = None
-        if result.aborted:
+        if result.aborted or (result.eof and self.endpoint._kind == "write"):
             raise WindowsRuntimeError("runtime_unavailable")
         if result.eof:
             self.eof = True
