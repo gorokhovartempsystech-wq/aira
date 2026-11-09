@@ -8,8 +8,8 @@ const WP = 'http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawi
 const V = 'urn:schemas-microsoft-com:vml';
 const M = 'http://schemas.openxmlformats.org/officeDocument/2006/math';
 
-// Элементы Word, из-за которых бэкенд не принимает проверку (not_admitted, unsupported_analysis_content).
-// Проверено на бэкенде main от 5 ноября 2026; современные надписи (wps) и исправления проверку не блокируют.
+// Historical preflight inventory (name kept for compatibility). Advisory only:
+// source-aware backend admission now supports several of these elements.
 export const BLOCKERS = [
   { ns: W, tag: 'softHyphen', label: 'мягкие переносы', fix: 'Ctrl+H → «Больше» → «Специальный» → «Мягкий перенос» (^-), заменить на пустое' },
   { ns: W, tag: 'noBreakHyphen', label: 'неразрывные дефисы', fix: 'Ctrl+H → найти ^~ и заменить на обычный дефис' },

@@ -344,24 +344,20 @@ function showStart() {
   scheduleRender();
 }
 
-// Клиент бэкенда считает «остановимой» и проверку, которую сервер не принял (not_admitted): она не идёт.
+// Confirmed refusal is terminal; uncertain admission must retain its stop/retry guards.
 const isRunning = a => a.canStop && a.phase !== 'not_admitted';
 
-// Тупик клиентского модуля бэкенда: после отказа (not_admitted) он держит проверку «остановимой» и «повторяемой»,
-// а закрытие вкладки, экспорт и closeAll этого не допускают; dispose() снаружи недоступен. Выйти из этого
-// состояния модуль не даёт, поэтому такую вкладку сохраняем и закрываем только в интерфейсе: на сервере
-// ничего не выполняется, текст сохранён. Полностью сервер закроет её при следующем запуске AIRA.
-const refusedCheck = id => { try { return app.workspace.client(id).analysis.status().phase === 'not_admitted'; } catch { return false; } };
-async function saveRefused(id) {
-  const editor = app.workspace.client(id).editor;
-  if (editor.status().dirty) await editor.save();
-  return !editor.status().dirty;
+// Confirmed refusal is settled by the updated client; use its normal close path.
+async function waitClientIdle(id) {
+  const c = app.workspace.client(id);
+  const idle = await waitFor(() => !c.editor.status().busy && !c.review.status().busy
+    && !c.files.status().busy, 15000);
+  if (!idle) throw new Error('busy');
 }
-// Вместо workspace.closeAll(): тот останавливается на первой «застрявшей» вкладке и не закрывает остальные.
 async function closeAllTabs() {
   for (const t of app.workspace.status().tabs) {
     if (t.phase !== 'open') continue;
-    if (refusedCheck(t.documentId)) { if (!await saveRefused(t.documentId)) throw new Error('unsaved'); continue; }
+    await waitClientIdle(t.documentId);
     await app.workspace.close(t.documentId);
   }
 }
@@ -395,11 +391,7 @@ async function closeDocument(id) {
   }
   await waitFor(() => { const s = c.editor.status(); return !s.busy; }, 15000);
   try {
-    if (refusedCheck(id)) {
-      if (!await saveRefused(id)) throw new Error('unsaved');
-      detach(id);
-      return;
-    }
+    await waitClientIdle(id);
     await app.workspace.close(id);
   } catch (e) {
     const tab = tabOf(id);
@@ -465,14 +457,6 @@ async function exportDocument() {
   };
   const ov = overlay('Готовим DOCX…');
   try {
-    if (refusedCheck(id)) {
-      // Модуль экспорта заблокирован отказом проверки: выгружаем сохранённую версию напрямую.
-      if (!await saveRefused(id)) throw new Error('unsaved');
-      const bytes = new Uint8Array(await app.api.savedBytes(id));
-      ov.close();
-      await finish({ bytes });
-      return;
-    }
     const result = await files.exportDocx();
     ov.close();
     await finish(result);
@@ -645,8 +629,8 @@ function renderToolbar() {
   if ($('#check-notice').dataset.key !== bkey) {
     $('#check-notice').dataset.key = bkey;
     $('#check-notice').hidden = !blockers.length;
-    $('#check-notice .body').replaceChildren(...(blockers.length ? [h('strong', {}, 'Проверка этого документа не запустится. '),
-      'В нём есть элементы Word, которые модель пока не читает:', blockersNode(blockers)] : []));
+    $('#check-notice .body').replaceChildren(...(blockers.length ? [h('strong', {}, 'В документе есть особые элементы Word. '),
+      'Совместимость будет определена при проверке. Исходный файл не изменяется:', blockersNode(blockers)] : []));
   }
   $("#example-banner").hidden = !isExample(id);
 }
