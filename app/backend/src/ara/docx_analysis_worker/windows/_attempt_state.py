@@ -20,6 +20,7 @@ class State:
         self.stopped = self.hard = self.closing = self.released = False
         self.error = self.stage = self.observation = self.status = None
         self.command = self.reply = None
+        self.control_eof = False
         self.permit_ready = self.transport_valid = self.natural = self.resources_closed = False
         self.blocked = False
         self.timed_out = self.request_complete = False

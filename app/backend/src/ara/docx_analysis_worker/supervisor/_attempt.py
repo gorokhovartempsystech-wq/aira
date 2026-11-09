@@ -176,9 +176,10 @@ def result(c, tag, e, cell):
     elif tag == "stop_native":
         e.stop_sent = True
     elif tag == "renew":
-        if value is True:
-            e.native_lease = e.renew_bound
-            e.renew_bound = None
+        if value is not None:
+            e.native_lease = value
+            if e.renew_bound == value:
+                e.renew_bound = None
         e.renew_at = time.monotonic() + 0.01
     elif tag == "heartbeat":
         terminal(e, value.state)
@@ -297,9 +298,13 @@ def native(c, e):
             and not c.busy(e, "platform_control")
             and time.monotonic() >= getattr(e, "renew_at", 0)
         ):
-            c.submit(
-                "platform_control", "renew", lambda: c.s._platform.renew(e.native, e.renew_bound), e
-            )
+            bound = e.renew_bound
+            attempt = e.native
+
+            def renew():
+                return bound if c.s._platform.renew(attempt, bound) is True else None
+
+            c.submit("platform_control", "renew", renew, e)
 
 
 def finish(c, e):

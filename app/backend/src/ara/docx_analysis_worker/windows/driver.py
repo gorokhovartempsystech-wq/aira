@@ -75,6 +75,7 @@ class WindowsAttempt(LocalResource):
                 or s.closing
                 or s.natural
                 or not s.permit_ready
+                or s.control_eof
                 or s.command
             ):
                 return False
