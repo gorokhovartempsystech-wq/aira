@@ -18,7 +18,7 @@ https://144.124.235.162 {
 
     @public {
         method GET HEAD
-        path / /index.html /app.js /styles.css /downloads/*.dmg /downloads/*.exe /downloads/*.sha256 /updates/*.xml
+        path / /index.html /app.js /styles.css /third-party.txt /favicon.svg /downloads/*.dmg /downloads/*.exe /downloads/*.sha256 /updates/*.xml
     }
     handle @public {
         root * /srv/aira-public
