@@ -301,9 +301,21 @@ export class DocEditor {
     if (this.assetsLoading || this.disposed) return;
     this.assetsLoading = true;
     try {
-      const snap = this.editor.snapshot();
-      const bytes = await this.api.workingBytes(this.documentId, snap);
+      let bytes;
+      for (let attempt=0;;attempt++) {
+        if (this.disposed) return;
+        try {
+          bytes = await this.api.workingBytes(this.documentId, this.editor.snapshot());
+          break;
+        } catch(e) {
+          // Working-content is a read. A concurrent checkpoint may briefly own
+          // the actor; retry that explicit refusal instead of losing all images.
+          if (e.status !== 503 || e.code !== 'editor_busy' || attempt >= 4) throw e;
+          await sleep(100 * 2 ** attempt);
+        }
+      }
       const assets = await readDocxAssets(bytes);
+      if (this.disposed) { assets.revoke(); return; }
       assets.missing = new Set();
       for (const e of this.paras) for (const s of e.block.spans || []) {
         if (s.kind === 'opaque' && !assets.images.has(pkey(s.anchor.path))) assets.missing.add(pkey(s.anchor.path));
@@ -692,6 +704,51 @@ export class DocEditor {
         await this.reload();
         if (keep) this.placeCaret(keep.key, keep.offset);
       } catch (e) { await this.failure(e, MSG.style); }
+    });
+  }
+
+  objectPoint() {
+    const sel = this.selectionInfo();
+    if (!sel || sel.anchor.entry !== sel.focus.entry || sel.anchor.offset !== sel.focus.offset
+        || sel.anchor.entry.top === null || this.composing) {
+      toast('Поставьте курсор в обычный абзац вне таблицы, без выделения текста.', 'info');
+      return null;
+    }
+    return {key:sel.anchor.entry.key, offset:sel.anchor.offset,
+      revision:this.editor.snapshot().document.session_revision};
+  }
+
+  prepareObjectPoint() {
+    const point = this.objectPoint();
+    if (!point) return Promise.resolve(null);
+    return this.enqueue(async () => {
+      if (this.disposed || this.editor.snapshot().document.session_revision !== point.revision) return null;
+      try {
+        // Commit the text typed just before opening the picker; its debounce must
+        // not make our own captured insertion point appear stale while it is open.
+        await this.flushAndSync();
+        if (this.laneError || !this.byKey.has(point.key)) return null;
+        return {...point, revision:this.editor.snapshot().document.session_revision};
+      } catch(e) { await this.failure(e); return null; }
+    });
+  }
+
+  insertObject(action, value, point) {
+    return this.enqueue(async () => {
+      if (this.disposed) return;
+      if (this.editor.snapshot().document.session_revision !== point.revision) {
+        toast('Документ изменился во время выбора. Поставьте курсор и повторите вставку.', 'warn'); return;
+      }
+      try {
+        await this.flush();
+        const entry = this.byKey.get(point.key);
+        if (!entry || entry.top === null) return;
+        await this.waitReady();
+        await this.capture(entry, point.offset, point.offset);
+        await this.editor.edit({action, value});
+        await this.reload({caret:'server'});
+        await this.loadAssets(true);
+      } catch(e) { await this.failure(e, 'Вставка в этой позиции или этот файл не поддерживаются. Документ не изменён.'); }
     });
   }
 

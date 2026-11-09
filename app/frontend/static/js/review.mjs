@@ -44,11 +44,11 @@ const ERRORS = {
   analysis_history_exhausted: 'Для этого документа накопилось слишком много проверок.',
   analysis_clock_error: 'Не удалось проверить системное время компьютера.',
 };
-// Что именно в DOCX мешает проверке и как это убрать в Word (см. BLOCKERS в docx-assets.mjs).
+// Advisory inventory; actual admission depends on source-aware backend checks.
 export function blockersNode(blockers) {
   return h('div', { class: 'blockers' },
-    h('ul', {}, blockers.map(b => h('li', {}, h('strong', {}, `${b.label[0].toUpperCase()}${b.label.slice(1)} — ${b.count}. `), `Как убрать в Word: ${b.fix}.`))),
-    h('p', {}, 'Исправьте документ в Word и загрузите его заново через «Импорт из Word». В AIRA эти элементы удалить нельзя.'));
+    h('ul', {}, blockers.map(b => h('li', {}, h('strong', {}, `${b.label[0].toUpperCase()}${b.label.slice(1)} — ${b.count}. `), 'Поддержка зависит от содержимого элемента.'))),
+    h('p', {}, 'Оригинальные элементы сохраняются в файле. Проверка сообщит, если какое-либо содержимое пока не поддерживается.'));
 }
 
 // Понятный текст причины; для неизвестной показываем код — его можно прислать разработчикам.
@@ -115,8 +115,7 @@ export function createReviewPanel({ body, rail, app }) {
     const client = app.workspace.client(id);
     if (app.licenceLocked) { toast('Лицензия не подтверждена — новая проверка недоступна.', 'warn'); return; }
     if (ed.isEmpty()) { toast('Введите текст требований — проверять пока нечего.', 'warn'); return; }
-    // Известные элементы Word, на которых бэкенд откажет: не отправляем запрос, чтобы вкладка не застряла в отказе.
-    if (ed.assets?.blockers?.length) { toast('Проверка этого документа не запустится: в нём есть элементы Word, которые модель пока не читает. Подробности — над текстом документа.', 'warn', { ms: 7000 }); return; }
+    // Preflight is advisory; only source-aware backend admission can decide.
     await ed.flushAll();
     if (ed.laneError) { toast('Сначала завершите сохранение правки (кнопка «Повторить» вверху).', 'warn'); return; }
     st(id).active = null;
@@ -212,17 +211,17 @@ export function createReviewPanel({ body, rail, app }) {
       return box;
     }
     const empty = editor.isEmpty(), blocked = !!editor.assets?.blockers?.length;
-    box.append(h('button', { class: 'check-btn', disabled: empty || blocked || app.licenceLocked || a.busy || !a.canCheck,
+    box.append(h('button', { class: 'check-btn', disabled: empty || app.licenceLocked || a.busy || !a.canCheck,
       onclick: () => runCheck(id) }, icon('scan'), r.review ? 'Проверить снова' : 'Проверить', h('kbd', {}, 'Ctrl+Enter')));
     if (empty) box.append(h('p', { class: 'note' }, 'Введите или вставьте текст требований — проверять пока нечего.'));
-    else if (blocked) box.append(h('p', { class: 'note' }, 'Проверка недоступна: в документе есть элементы Word, которые модель пока не читает. Что исправить — над текстом документа.'));
+    else if (blocked) box.append(h('p', { class: 'note' }, 'В документе есть особые элементы Word. Нажмите «Проверить»: приложение определит, поддерживается ли их содержимое.'));
 
     if (a.phase === 'save_uncertain') box.append(problem('Не удалось подтвердить сохранение версии для проверки.', 'Повторить', () => client.analysis.retrySave()));
     else if (a.phase === 'save_error') box.append(problem('Не удалось сохранить версию для проверки. Текст не потерян.', null));
     else if (a.phase === 'admission_uncertain') box.append(problem('Не удалось подтвердить запуск проверки.', 'Повторить запуск', () => client.analysis.retryAdmission()));
     else if (a.phase === 'not_admitted') {
       const code = a.receipt?.error_code, blockers = editor.assets?.blockers || [];
-      const p = problem(reason(code, 'Проверка не запущена.'), code === 'unsupported_analysis_content' && blockers.length ? null : 'Проверить ещё раз', () => runCheck(id));
+      const p = problem(reason(code, 'Проверка не запущена.'), 'Проверить ещё раз', () => runCheck(id));
       if (code === 'unsupported_analysis_content' && blockers.length) p.querySelector('div').append(blockersNode(blockers));
       box.append(p);
     }
