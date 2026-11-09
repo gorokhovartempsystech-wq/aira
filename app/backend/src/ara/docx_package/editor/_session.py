@@ -207,6 +207,28 @@ class EditorSession:
         points = _target_points(SelectionTarget(caret, caret), document)
         return self._adopt(state, before, candidate, document, points)
 
+    def insert_table(self, rows, columns, *, expected_revision):
+        from ._objects import table
+
+        state, before, index, offset = self._collapsed(expected_revision)
+        data, destination = table(state.core, before, index, offset, rows, columns)
+        candidate = copy(state.core)
+        document = candidate._accept_change(data)
+        caret = CaretTarget(destination, 0)
+        points = _target_points(SelectionTarget(caret, caret), document)
+        return self._adopt(state, before, candidate, document, points)
+
+    def insert_image(self, data, *, alt_text="", expected_revision):
+        from ._images import ImageData, insert
+
+        state, before, index, offset = self._collapsed(expected_revision)
+        data, destination = insert(state.core, before, index, offset, ImageData(data, alt_text))
+        candidate = copy(state.core)
+        document = candidate._accept_change(data)
+        caret = CaretTarget(destination, 0)
+        points = _target_points(SelectionTarget(caret, caret), document)
+        return self._adopt(state, before, candidate, document, points)
+
     def insert_text(self, text, *, expected_revision):
         from ._typing import insert_text, validate_text
 

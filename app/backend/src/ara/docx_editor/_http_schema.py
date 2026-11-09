@@ -99,6 +99,32 @@ def definitions():
         if action == "capture":
             value = ref("Selection")
             required.append("value")
+        elif action == "insert_table":
+            value = record(
+                dict(
+                    rows=dict(type="integer", minimum=1, maximum=100),
+                    columns=dict(type="integer", minimum=1, maximum=32),
+                )
+            )
+            value["description"] = "Empty table at the collapsed body caret; at most 1024 cells."
+            required.append("value")
+        elif action == "insert_image":
+            from ara.docx_package.editor._images import MAX_BASE64
+
+            value = record(
+                dict(
+                    data_base64=dict(
+                        type="string", contentEncoding="base64", minLength=4, maxLength=MAX_BASE64
+                    ),
+                    alt_text=dict(type="string", maxLength=2000, default=""),
+                ),
+                ["data_base64"],
+            )
+            value["description"] = (
+                "Static PNG or baseline/progressive JPEG; 4 MiB, 20 million pixels; "
+                "collapsed body caret."
+            )
+            required.append("value")
         elif action in ("insert_text", "paste_text"):
             value = dict(type="string", maxLength=100000 if action == "insert_text" else 1000000)
             required.append("value")

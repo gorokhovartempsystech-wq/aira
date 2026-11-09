@@ -29,3 +29,15 @@ backend owns the five-minute deadline; a 30-second HTTP deadline is a network er
 not a fabricated terminal analysis outcome. `fixture` must remain visible in the UI.
 This module does not fetch result bodies, map findings to RAM or provide final UI;
 those remain the next integration cycle. The real model package is still absent.
+
+## Confirmed refusal (D03-20A, 9 November 2026)
+
+A `not_admitted` receipt with `run_id=null` and `state=null` proves that no run
+needs draining. The refusal and its error stay visible, but Stop and
+`retryAdmission` become unavailable. The document can be edited, exported and
+checkpoint-closed through the normal workspace. Use `check()` after correction:
+it saves the current text and generates a new request identity.
+
+Uncertain admission, poll failures, and receipts still bound to a run remain
+protected. They must not be treated as a confirmed refusal. A late poll cannot
+replace an already confirmed refusal with stale waiting/error state.

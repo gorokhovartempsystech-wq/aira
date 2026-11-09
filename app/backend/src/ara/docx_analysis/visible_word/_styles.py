@@ -6,15 +6,18 @@ from ara.docx_analysis.visibility._grammar import boolean, check, decimal
 from ara.docx_analysis.visible_style_lists._contexts import Grammar as StyleGrammar
 from ara.docx_package._xml import WORD_NAMESPACES
 
+from ._layout import borders
 from ._tabs import tabs
 
 
 class Grammar(StyleGrammar):
     def leaf(self, node):
+        if self.name(node) == "pBdr":
+            return borders(self, node, check)
         if self.name(node) == "numPr":
             self.attrs(node)
             children = self.children(node, {"ilvl", "numId"})
-            check([self.name(n) for n in children] in (["numId"], ["ilvl", "numId"]))
+            check([self.name(n) for n in children] in ([], ["ilvl"], ["numId"], ["ilvl", "numId"]))
             for child in children:
                 super().leaf(child)
                 self.attrs(child, {"val"}, {"val"})
@@ -28,7 +31,9 @@ class Grammar(StyleGrammar):
 
     def property_names(self, kind):
         return super().property_names(kind) | (
-            {"contextualSpacing", "tabs"} if kind == "pPr" else {"kern", "spacing", "noProof"}
+            {"contextualSpacing", "tabs", "pBdr"}
+            if kind == "pPr"
+            else {"kern", "spacing", "noProof"}
         )
 
     def properties(self, node, kind):

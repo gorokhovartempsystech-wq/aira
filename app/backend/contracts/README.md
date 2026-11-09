@@ -4,8 +4,8 @@
 
 ## Образцы
 
-- [Merge: запрос](<./contracts/examples/merge-request.json>) и [результат](<./contracts/examples/merge-result.json>).
-- [Linting: запрос](<./contracts/examples/lint-request.json>) и [результат](<./contracts/examples/lint-result.json>).
+- [Merge: запрос](</Users/nikpavelchuk/Documents/ChatGPT/AI Requirements Assistant/contracts/examples/merge-request.json>) и [результат](</Users/nikpavelchuk/Documents/ChatGPT/AI Requirements Assistant/contracts/examples/merge-result.json>).
+- [Linting: запрос](</Users/nikpavelchuk/Documents/ChatGPT/AI Requirements Assistant/contracts/examples/lint-request.json>) и [результат](</Users/nikpavelchuk/Documents/ChatGPT/AI Requirements Assistant/contracts/examples/lint-result.json>).
 
 Примеры составлены для интерфейса по мотивам рабочего кейса. Это не реальные ответы модели и не утверждённый эталон её качества. В примере Merge группа g1 независима от вопросов, g2 зависит от g1 и ответа q1. Общий запрос остаётся не полностью решённым даже при принятии g1.
 
@@ -108,4 +108,15 @@ status: proposed, already_satisfied, needs_clarification, out_of_scope. proposed
 
 В [T03-01](../docs/t03-01-result.md) завершены GET/PUT `/runs/{run_id}/review`: виртуальная ревизия 0 без записи, полный снимок решений `pending`/`accepted`/`rejected`/`deferred`, точные текстовые edits и неизменяемая история. Оба метода возвращают ReviewResponse из 11 полей; optional `revision_id` в GET выбирает историческую ревизию. PUT сверяет ожидаемого родителя и SHA-256 fingerprint исходного результата, повтор того же снимка возвращает прежнюю ревизию. Это отдельный HTTP-контракт, исходные AnalysisResult и RunResponse не меняются. `accepted` сохраняет намерение, даже если остаются вопросы или непринятые зависимости; оно не означает применение. [Точный контракт решений](../docs/t03-01-contract.md).
 
-Независимый gate T03-01: 468 тестов и 24 подтеста. До технического сценария с fixture остаются T03-02 (preview/diff) и T03-03 (применение); до пилота — шесть крупных этапов, включая оставшуюся T03, по [бэклогу](<./docs/implementation-backlog.md>). Реальный ML, настоящий вход, интерфейс и Confluence пока не реализованы.
+Независимый gate T03-01: 468 тестов и 24 подтеста. До технического сценария с fixture остаются T03-02 (preview/diff) и T03-03 (применение); до пилота — шесть крупных этапов, включая оставшуюся T03, по [бэклогу](</Users/nikpavelchuk/Documents/ChatGPT/AI Requirements Assistant/docs/implementation-backlog.md>). Реальный ML, настоящий вход, интерфейс и Confluence пока не реализованы.
+
+## DOCX source slices v5: 9 ноября 2026
+
+D03-20B/C добавляют в `slice.kind` схем `docx-review-v5.json` и
+`docx-review-view-v5.json` значения `nonbreaking_hyphen` и `symbol`.
+Они обозначают исходные XML-атомы, а не синтетические `w:t`; цитата остаётся
+точной подстрокой текста анализа. Для поддержанных атомов start/end — 0/1.
+Прежние поля и значения сохраняются, профили v1–v4 не расширяются.
+Это изменение требует согласованного обновления потребителей v5; старый
+клиент с закрытым enum нельзя автоматически считать совместимым.
+Подробности и границы — [D03-20C](../docs/d03-20c-contract.md).

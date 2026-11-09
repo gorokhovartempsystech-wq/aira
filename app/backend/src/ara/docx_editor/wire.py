@@ -1,5 +1,7 @@
 """Pure strict request decoding and explicit bounded metadata/projection JSON."""
 
+import base64
+import binascii
 import re
 from functools import wraps
 from json import JSONEncoder
@@ -195,6 +197,22 @@ def decode_command(value):
     with native_errors():
         if action == "capture":
             data = _selection(data)
+        elif action == "insert_table":
+            from ara.docx_package.editor._objects import TableSize
+
+            size = _shape(data, ("rows", "columns"))
+            data = TableSize(_int(size["rows"], 100), _int(size["columns"], 32))
+        elif action == "insert_image":
+            from ara.docx_package.editor._images import MAX_BASE64, ImageData
+
+            image = _shape(data, ("data_base64",), ("alt_text",))
+            encoded = _str(image["data_base64"], MAX_BASE64)
+            try:
+                raw = base64.b64decode(encoded, validate=True)
+            except (ValueError, binascii.Error):
+                error("validation_error", 422)
+            validate(base64.b64encode(raw).decode("ascii") == encoded)
+            data = ImageData(raw, image.get("alt_text", ""))
         elif action in ("insert_text", "paste_text"):
             data = _str(data, 100000 if action == "insert_text" else 1000000)
             validate(

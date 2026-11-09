@@ -18,7 +18,7 @@ class Grammar(SourceAnchors, BaseGrammar):
 
 class State(StyleState):
     def inherited(self, identity):
-        chain, key = [], identity
+        chain, key, selected_level = [], identity, None
         while key is not None:
             paragraph_style(self.styles, key)
             style = self.styles[key]
@@ -33,13 +33,18 @@ class State(StyleState):
             )
             if numpr is not None:
                 values = {n.tag[len(ns) :]: integer(n.get(ns + "val")) for n in numpr}
+                if selected_level is None:
+                    selected_level = values.get("ilvl")
+                if "numId" not in values:
+                    key = style.based_on
+                    continue
                 number = values["numId"]
                 if number == 0:
                     return None
                 definition, binding = self.bound_level(number, identity)
                 # Require agreement: Word and ISO differ on conflicting style ilvl.
                 require(
-                    "ilvl" not in values or values["ilvl"] == definition.level,
+                    selected_level is None or selected_level == definition.level,
                     "ambiguous_style_list_level",
                 )
                 return Selection(number, numpr.anchor, definition), tuple(chain), binding

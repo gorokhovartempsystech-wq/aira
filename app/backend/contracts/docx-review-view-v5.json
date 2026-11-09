@@ -117,7 +117,9 @@
           "enum": [
             "text",
             "tab",
-            "break"
+            "break",
+            "nonbreaking_hyphen",
+            "symbol"
           ]
         },
         "anchor": {
