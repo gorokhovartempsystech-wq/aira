@@ -144,6 +144,32 @@ def softmax(x, t=1.0):
     return e / e.sum(1, keepdims=True)
 
 
+_EXCHANGE = re.compile(
+    r'^(?:\d+(?:\.\d+)*\.?\s+)?направление\s+'
+    r'(?P<left>[^→←<>;]+?)\s*(?P<arrow>→|←|->|<-)\s*'
+    r'(?P<right>[^→←<>;]+?)(?P<condition>\s*[,;:]?\s+(?:если|когда|при|после|до)\s+.+)?$'
+)
+
+
+def exchange_scope(text):
+    """Extract ordered endpoints and an explicit condition from an exchange heading."""
+    match = _EXCHANGE.fullmatch(re.sub(r"\s+", " ", text.casefold().replace("ё", "е")).strip().rstrip(".!;"))
+    if not match:
+        return None
+    left, right = (match[key].strip() for key in ('left', 'right'))
+    if not left or not right or any(c in right for c in (',', ';', ':')):
+        return None
+    if match['arrow'] in ('←', '<-'):
+        left, right = right, left
+    condition = (match['condition'] or '').strip(' ,;:')
+    return left, right, condition
+
+
+def distinct_exchange_scopes(left, right):
+    a, b = exchange_scope(left), exchange_scope(right)
+    return a is not None and b is not None and a != b
+
+
 class Engine:
     def __init__(self, models, threads=4):
         self.dir = Path(models)
@@ -280,7 +306,10 @@ class Engine:
             step("questions", 0.97)
             for n, (a, b, s) in enumerate(pairs):
                 fa, fb = active[a], active[b]
-                if s >= DUP_YELLOW and "duplicate" not in disabled:
+                if (
+                    s >= DUP_YELLOW and "duplicate" not in disabled
+                    and not distinct_exchange_scopes(fa["text"], fb["text"])
+                ):
                     issues.append({"id": self._id("duplicate", fa["id"], fb["id"]), "type": "duplicate",
                                    "severity": "info", "confidence": round(s, 3), "light": "red" if s >= DUP_RED else "yellow",
                                    "fragment_id": fb["id"], "span": {"start": 0, "end": len(fb["text"]), "quote": fb["text"]},
