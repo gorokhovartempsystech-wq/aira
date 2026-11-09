@@ -121,7 +121,7 @@ def main():
     os.dup2(sys.stderr.fileno(), sys.stdout.fileno())
     try:
         data = Path(sys.argv[1]).resolve(strict=True)
-        config = data / "license-origin.txt"
+        config = PAYLOAD.parent / "license-origin.txt"
         origin = config.read_text(encoding="ascii").strip()
         serve(data, origin, handshake)
         return 0

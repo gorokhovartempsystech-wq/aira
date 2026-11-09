@@ -1,14 +1,17 @@
 import AppKit
 import Foundation
+import Sparkle
 import UniformTypeIdentifiers
 import WebKit
 
-final class Desktop: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandlerWithReply {
+final class Desktop: NSObject, NSApplicationDelegate, SPUUpdaterDelegate, NSWindowDelegate, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandlerWithReply {
     private var window: NSWindow!
     private var web: WKWebView?
     private var process: Process?
     private var origin: URL?
     private var closing = false
+    private var installAfterShutdown: (() -> Void)?
+    private var updater: SPUStandardUpdaterController?
     private var result: Int32 = 0
     private var dataDirectory: URL?
     private let smoke = CommandLine.arguments.contains("--smoke")
@@ -40,9 +43,9 @@ final class Desktop: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNaviga
         dataDirectory = data
         try fm.createDirectory(at: data, withIntermediateDirectories: true,
                                attributes: [.posixPermissions: 0o700])
-        let config = data.appendingPathComponent("license-origin.txt")
+        let config = Bundle.main.resourceURL!.appendingPathComponent("license-origin.txt")
         guard fm.fileExists(atPath: config.path) else {
-            failed("Сервер лицензий ещё не настроен. Нужен HTTPS-адрес в license-origin.txt в папке AIRA Mac Pilot.")
+            failed("В установщике отсутствует адрес сервера лицензий. Переустановите AIRA.")
             return
         }
         let log = data.appendingPathComponent("aira.log")
@@ -135,6 +138,12 @@ final class Desktop: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNaviga
             }
         }
         web.load(URLRequest(url: base.appendingPathComponent("aira", isDirectory: true)))
+        if !smoke {
+            updater = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: self, userDriverDelegate: nil)
+            let item = NSMenuItem(title: "Проверить обновления…", action: #selector(checkUpdates(_:)), keyEquivalent: "")
+            item.target = self
+            NSApp.mainMenu?.items.first?.submenu?.insertItem(item, at: 0)
+        }
     }
 
     func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction,
@@ -219,6 +228,19 @@ final class Desktop: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNaviga
         } else { replyHandler(nil, "invalid_file_operation") }
     }
 
+    func updater(_ updater: SPUUpdater, shouldPostponeRelaunchForUpdate item: SUAppcastItem,
+                 untilInvokingBlock installHandler: @escaping () -> Void) -> Bool {
+        guard process?.isRunning == true else { return false }
+        installAfterShutdown = installHandler
+        // Returning lets the main actor finish before the async save/close starts.
+        DispatchQueue.main.async { NSApp.terminate(nil) }
+        return true
+    }
+
+    @objc private func checkUpdates(_ sender: Any?) {
+        updater?.checkForUpdates(sender)
+    }
+
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         NSApp.terminate(nil)
         return false
@@ -247,7 +269,15 @@ final class Desktop: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNaviga
         process = nil
         if closing {
             if status != 0 { result = 1 }
-            NSApp.terminate(nil)
+            if status == 0, let install = installAfterShutdown {
+                installAfterShutdown = nil
+                install()
+            } else if status != 0, installAfterShutdown != nil {
+                closing = false
+                let alert = NSAlert()
+                alert.messageText = "Обновление отложено: AIRA не подтвердила штатное завершение работы."
+                alert.runModal()
+            } else { NSApp.terminate(nil) }
         } else { failed("AIRA остановилась. Подробности в aira.log.") }
     }
 

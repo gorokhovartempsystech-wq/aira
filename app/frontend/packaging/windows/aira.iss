@@ -53,6 +53,9 @@ Name: "{autodesktop}\AIRA"; Filename: "{app}\python\pythonw.exe"; Parameters: "-
 [Run]
 Filename: "{app}\python\pythonw.exe"; Parameters: "-s -E ""{app}\launcher\aira_launcher.pyw"""; WorkingDir: "{app}"; Description: "Запустить AIRA"; Flags: postinstall nowait skipifsilent
 
+; Automatic update launches the new app; a silent administrative install does not.
+Filename: "{app}\python\pythonw.exe"; Parameters: "-s -E ""{app}\launcher\aira_launcher.pyw"""; WorkingDir: "{app}"; Flags: nowait skipifnotsilent; Check: IsAutomaticUpdate
+
 [UninstallRun]
 ; Если база осталась запущенной после сбоя — остановить её перед удалением файлов.
 Filename: "{app}\python\python.exe"; Parameters: "-s -E ""{app}\launcher\aira_launcher.pyw"" --stop-db"; WorkingDir: "{app}"; Flags: runhidden; RunOnceId: "StopAiraPostgres"
@@ -62,6 +65,11 @@ Filename: "{app}\python\python.exe"; Parameters: "-s -E ""{app}\launcher\aira_la
 Type: filesandordirs; Name: "{app}"
 
 [Code]
+function IsAutomaticUpdate: Boolean;
+begin
+  Result := ExpandConstant('{param:AIRAUPDATE|0}') = '1';
+end;
+
 function IsAscii(S: String): Boolean;
 var
   I: Integer;

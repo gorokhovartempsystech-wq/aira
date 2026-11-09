@@ -1,0 +1,48 @@
+name: desktop-updates
+
+on:
+  pull_request:
+    paths:
+      - "app/frontend/packaging/**"
+      - "sites/aira-download/**"
+      - ".github/workflows/desktop-updates.yml"
+  push:
+    branches: [main]
+    paths:
+      - "app/frontend/packaging/**"
+      - ".github/workflows/desktop-updates.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install python-dotenv==1.2.3
+      - name: Portable updater behavior
+        run: python -m unittest discover -s app/frontend/packaging/updates -p "test_*.py" -v
+      - name: Download verified macOS SDK
+        if: runner.os == 'macOS'
+        run: python app/frontend/packaging/updates/fetch_sdk.py macos "$RUNNER_TEMP/sparkle"
+      - name: Compile real Mac shell with Sparkle
+        if: runner.os == 'macOS'
+        run: >-
+          xcrun swiftc -target arm64-apple-macos13.0
+          -F "$RUNNER_TEMP/sparkle" -framework Sparkle
+          app/frontend/packaging/macos/AIRA.swift -o "$RUNNER_TEMP/AIRA"
+      - name: Download verified Windows SDK
+        if: runner.os == 'Windows'
+        run: python app/frontend/packaging/updates/fetch_sdk.py windows "$env:RUNNER_TEMP/winsparkle"
+      - name: Native Windows DLL contract (no installer)
+        if: runner.os == 'Windows'
+        run: python app/frontend/packaging/updates/check_windows_sdk.py "$env:RUNNER_TEMP/winsparkle/WinSparkle-0.9.4"

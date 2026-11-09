@@ -564,6 +564,13 @@ def main():
         focus_running()
         return
     log = open_log()
+    # Backend and editor have not started: the installer cannot discard edits.
+    try:
+        from aira_updates import startup_update
+        if startup_update(APP / "launcher", version()):
+            return
+    except Exception as error:
+        print("Update check unavailable:", type(error).__name__, flush=True)
     mode = "browser" if os.environ.get("AIRA_BROWSER_MODE") or "--browser" in sys.argv else "desktop"
     if mode == "desktop":
         try:

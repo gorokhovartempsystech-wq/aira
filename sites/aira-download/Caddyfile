@@ -1,0 +1,33 @@
+{
+    default_sni 144.124.235.162
+}
+
+https://144.124.235.162 {
+    tls {
+        issuer acme https://acme-v02.api.letsencrypt.org/directory {
+            profile shortlived
+        }
+    }
+
+    @license path /license/v1/activate /license/v1/check
+    handle @license {
+        reverse_proxy 127.0.0.1:8766 {
+            header_up X-Forwarded-Proto https
+        }
+    }
+
+    @public {
+        method GET HEAD
+        path / /index.html /app.js /styles.css /downloads/*.dmg /downloads/*.exe /downloads/*.sha256 /updates/*.xml
+    }
+    handle @public {
+        root * /srv/aira-public
+        header X-Content-Type-Options nosniff
+        header Referrer-Policy no-referrer
+        header Cache-Control no-cache
+        file_server
+    }
+    handle {
+        respond 404
+    }
+}

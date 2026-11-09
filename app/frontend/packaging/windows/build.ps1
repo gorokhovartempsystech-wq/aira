@@ -10,7 +10,8 @@ param(
   [string]$PgDir = "$env:USERPROFILE\AIRA-dev\pgsql",
   [string]$Python = "$env:LOCALAPPDATA\Programs\Python\Python312",
   [string]$Out = "$env:USERPROFILE\AIRA-dev\build",
-  [string]$Version = '0.1.0',
+  [string]$Version = '0.2.4',
+  [Parameter(Mandatory=$true)][string]$WinSparkleDir,
   [string]$Iscc = "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe",
   [switch]$NoModel,
   [switch]$StageOnly
@@ -30,6 +31,7 @@ function Copy-Tree($from, $to, [string[]]$excludeDirs = @(), [string[]]$excludeF
 
 foreach ($p in @($py, (Join-Path $PgDir 'bin\postgres.exe'))) { if (-not (Test-Path $p)) { throw "Not found: $p" } }
 if (-not $NoModel -and -not (Test-Path (Join-Path $ModelDir 'manifest.json'))) { throw "Model manifest not found in $ModelDir (or use -NoModel)" }
+if (-not (Test-Path (Join-Path $WinSparkleDir 'x64\WinSparkle.dll'))) { throw 'Verified WinSparkle 0.9.4 distribution required' }
 if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
 New-Item -ItemType Directory -Force $stage | Out-Null
 
@@ -60,6 +62,11 @@ Copy-Tree (Join-Path $repo 'app\frontend\static') "$stage\app\frontend\static"
 Copy-Item (Join-Path $repo 'app\frontend\aira_host.py') "$stage\app\frontend\aira_host.py"
 New-Item -ItemType Directory -Force "$stage\launcher" | Out-Null
 Copy-Item (Join-Path $here 'aira_launcher.pyw') "$stage\launcher\aira_launcher.pyw"
+Copy-Item (Join-Path $here 'aira_updates.py') "$stage\launcher\aira_updates.py"
+Copy-Item (Join-Path $here '..\updates\release-config.json') "$stage\launcher\release-config.json"
+Copy-Item (Join-Path $WinSparkleDir 'x64\WinSparkle.dll') "$stage\launcher\WinSparkle.dll"
+Copy-Item (Join-Path $WinSparkleDir 'COPYING') "$stage\launcher\WinSparkle-COPYING.txt"
+Copy-Item (Join-Path $WinSparkleDir 'COPYING.expat') "$stage\launcher\WinSparkle-COPYING.expat.txt"
 Copy-Item (Join-Path $here 'THIRD-PARTY.txt') "$stage\launcher\THIRD-PARTY.txt"
 Set-Content "$stage\launcher\VERSION" $Version -Encoding ascii
 # Иконка: PNG-логотип внутри ICO.
