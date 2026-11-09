@@ -1,5 +1,9 @@
 # F02-UPDATES-01 — проверка выпуска 9 ноября 2026
 
+## Infrastructure status after acceptance
+
+On November 9, Nikita deleted the VPS and announced a replacement server in Yandex. All HTTPS, activation and update checks below completed before deletion. The old IP `144.124.235.162` is no longer an active AIRA endpoint: do not run further checks or deployments against it. The website, activation and update feed are currently unavailable. Mac 0.2.4 embeds that IP. Once the new address is available, migrate the public artifacts and license service, update release configuration, and ship a new installer. Existing clients need a manual transition unless the old endpoint can be restored. Preserve the release Ed25519 key in the operator's `~/secrets.env` during migration.
+
 ## Состав
 
 - Mac 0.2.4, build 3, Apple Silicon, macOS 13+, Sparkle 2.10.1. Встроены модель и HTTPS-адрес лицензий.

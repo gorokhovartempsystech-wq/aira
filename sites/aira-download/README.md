@@ -1,5 +1,7 @@
 # AIRA — сайт скачивания
 
+**Infrastructure status, November 9:** after successful acceptance, the owner deleted the VPS and plans a replacement in Yandex. The IP embedded in these sources and Mac 0.2.4 no longer works. The links below document the previously tested deployment. Downloads and activation require migration and a new installer configured for the replacement endpoint.
+
 Статическая страница: `index.html`, `styles.css`, `app.js`. Сборщик и внешние библиотеки не нужны. Установщики не добавляются в Git; папка `downloads` исключена.
 
 Публичные ссылки используют HTTPS-сервер AIRA `https://144.124.235.162`. Домен пока не выбран. Mac: 0.2.4, Apple Silicon, macOS 13+, модель и адрес лицензий встроены; Sparkle получает следующие подписанные обновления. Windows: оригинальный пилот Ани 0.2.0, SHA-256 `01717fdeadcdb2ea5aa057e9e4330a2b6941167d962686ec5a439e549771a9fa`. Он ещё без лицензирования и автообновления. Новая Windows-сборка с updater требует сборки и нативной проверки на Windows. Intel Mac и Windows ARM не объявляются доступными.
