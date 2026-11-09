@@ -10,7 +10,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("sdk", type=Path)
     args = parser.parse_args()
-    dll = ctypes.CDLL(str((args.sdk / "x64/WinSparkle.dll").resolve(strict=True)))
+    dll = ctypes.CDLL(str((args.sdk / "x64/Release/WinSparkle.dll").resolve(strict=True)))
     names = (
         "set_app_details",
         "set_appcast_url",
