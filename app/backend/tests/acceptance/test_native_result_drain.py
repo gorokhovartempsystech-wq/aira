@@ -59,7 +59,7 @@ def test_queued_renewal_keeps_its_bound_after_exit_observation():
     native(coordinator, e)
     observe(e)
     assert e.renew_bound is None
-    job, = jobs
+    (job,) = jobs
     result(coordinator, "renew", e, NS(error=None, value=job()))
     assert calls == [(attempt, 800)]
     assert e.native_lease == 800

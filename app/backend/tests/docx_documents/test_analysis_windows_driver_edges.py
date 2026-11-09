@@ -488,7 +488,6 @@ def test_native_guardian_death_rejects_reply_and_drains_owned_job(tmp_path, monk
         owner.close()
 
 
-
 def test_closed_control_pipe_during_renewal_leaves_completion_to_data_reader(runtime, monkeypatch):
     _, _, holders, start = runtime
     writer = importlib.import_module("ara.docx_analysis_worker.windows._control_writer")
