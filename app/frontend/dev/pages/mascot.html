@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="ru">
+<meta charset="utf-8">
+<title>AIRA — сурикат</title>
+<link rel="stylesheet" href="/aira/assets/app.css">
+<style>
+  body { padding: 28px; }
+  .row { display: flex; gap: 28px; align-items: flex-end; flex-wrap: wrap; }
+  figure { margin: 0; display: grid; justify-items: center; gap: 6px; padding: 16px 18px 10px; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; }
+  figcaption { font-size: 13px; color: var(--muted); }
+  h1 { font-size: 20px; margin: 0 0 16px; }
+  .small { margin-top: 24px; }
+</style>
+<body>
+<h1>Сурикат AIRA — настроения</h1>
+<div class="row" id="big"></div>
+<div class="row small" id="small"></div>
+<script type="module">
+// Витрина маскота для разработки: /aira/dev-pages/mascot.html (?pop=error|warn — показать всплывающую ошибку)
+import { meerkat, look, mascotAlert, MOODS } from '/aira/assets/js/mascot.mjs';
+const names = { idle: 'спокойный', happy: 'радуется', wave: 'машет', surprised: 'удивлён (ошибка)' };
+for (const m of MOODS) {
+  const f = document.createElement('figure');
+  f.append(meerkat({ mood: m, size: 150 }));
+  const c = document.createElement('figcaption'); c.textContent = names[m]; f.append(c);
+  document.getElementById('big').append(f);
+}
+for (const [dx, dy, t] of [[-1, 0, 'смотрит влево'], [1, 0, 'вправо'], [0, -1, 'вверх'], [0.7, 0.7, 'вниз-вправо']]) {
+  const f = document.createElement('figure');
+  const s = meerkat({ mood: 'idle', size: 80 }); look(s, dx, dy); f.append(s);
+  const c = document.createElement('figcaption'); c.textContent = t; f.append(c);
+  document.getElementById('small').append(f);
+}
+const pop = new URLSearchParams(location.search).get('pop');
+if (pop) mascotAlert(pop === 'warn' ? 'Выделение захватывает несколько абзацев. Измените текст в одном абзаце.' : 'Сохранение не подтверждено. Изменения не потеряны.', pop,
+  { ms: 600000, action: pop === 'error' ? { label: 'Повторить', run: () => {} } : null });
+</script>
+</body>
+</html>

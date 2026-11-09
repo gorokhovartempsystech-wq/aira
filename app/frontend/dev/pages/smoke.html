@@ -1,0 +1,340 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>AIRA UI smoke</title>
+<style>html,body{margin:0;height:100%}iframe{border:0;width:100%;height:100vh;display:block}#report{position:fixed;left:0;bottom:0;width:1px;height:1px;overflow:hidden}</style>
+<iframe id="f"></iframe>
+<pre id="report"></pre>
+<script type="module">
+// Development-only UI smoke scenarios against the live dev stand. Usage: smoke.html?s=<scenario>
+const s = new URLSearchParams(location.search).get('s') || 'start';
+const report = { scenario: s, errors: [], log: [], toasts: [] };
+const out = () => { document.getElementById('report').textContent = 'REPORT' + JSON.stringify(report) + 'END'; };
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const f = document.getElementById('f');
+
+// The onboarding tour runs only in the 'tour' scenario; other scenarios start with it already passed.
+for (const k of ['aira.tour.start', 'aira.tour.doc']) { if (s.startsWith('tour')) localStorage.removeItem(k); else localStorage.setItem(k, 'true'); }
+if (s !== 'licence') await fetch('/desktop/license/activate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ license_key: 'ABCD-EFGH-IJKL-MNOP' }) });
+
+f.onload = async () => {
+  const w = f.contentWindow, d = w.document;
+  w.addEventListener('error', e => { report.errors.push(`${e.message} @${e.filename}:${e.lineno}`); out(); });
+  w.addEventListener('unhandledrejection', e => { report.errors.push('rejection: ' + (e.reason?.stack || e.reason)); out(); });
+  const ce = w.console.error.bind(w.console);
+  w.console.error = (...a) => { report.errors.push('console: ' + a.map(String).join(' ')); ce(...a); out(); };
+  new w.MutationObserver(() => { for (const t of d.querySelectorAll('.toast span, .mk-pop .mk-msg')) if (t.textContent && !report.toasts.includes(t.textContent)) report.toasts.push(t.textContent); }).observe(d.body, { childList: true, subtree: true, characterData: true });
+  try { await run(w, d); } catch (e) { report.errors.push('harness: ' + (e.stack || e)); }
+  out();
+  // Leave nothing open on the shared dev server; keep the final screen for screenshots.
+  if (new URLSearchParams(location.search).get('keep') !== '1') {
+    try { if (w.AIRA?.debug?.editors.size) report.log.push({ closedAll: await w.AIRA.prepareToClose() }); } catch (e) { report.errors.push('close: ' + e); }
+    out();
+  }
+};
+f.src = '/aira/';
+
+async function until(fn, ms = 20000) {
+  const end = Date.now() + ms;
+  for (;;) { const v = fn(); if (v) return v; if (Date.now() > end) throw new Error('timeout: ' + fn); await sleep(100); }
+}
+
+async function run(w, d) {
+  const $ = q => d.querySelector(q), $$ = q => Array.from(d.querySelectorAll(q));
+  if (s === 'licence') { await sleep(1500); report.log.push({ licence: !$('#licence').hidden }); return; }
+  await until(() => !$('#app').hidden);
+  report.log.push({ app: true, start: !$('#start').hidden });
+  if (s === 'start') return;
+
+  if (s === 'tour') {
+    // Start tour: walk every step, then the last step opens the example and the document tour starts.
+    const steps = [];
+    await until(() => $('.tour .tour-bubble'));
+    for (let k = 0; k < 12 && $('.tour'); k++) {
+      await sleep(450);
+      const b = $('.tour-bubble'), spot = $('.tour-spot').getBoundingClientRect();
+      steps.push({ step: b.querySelector('.tour-step').textContent, title: b.querySelector('h3').textContent,
+        mood: [...$('.tour-card > .meerkat').classList].find(c => c.startsWith('mood-')), spot: Math.round(spot.width) + 'x' + Math.round(spot.height) });
+      if (b.querySelector('h3').textContent.includes('не так')) [...b.querySelectorAll('.btn')].find(x => x.textContent === 'Показать')?.click();
+      const next = b.querySelector('.btn.primary');
+      if (next.textContent === 'Открыть пример') { next.click(); break; }
+      next.click();
+    }
+    report.log.push({ startTour: steps, demoPop: report.toasts.length, startDone: w.localStorage.getItem('aira.tour.start') });
+    await until(() => { const rec = $('.modal [data-id="recover"]'); if (rec) rec.click(); return $('.tour:not(.out) .tour-bubble'); }, 30000);
+    const docSteps = [];
+    for (let k = 0; k < 10 && $('.tour'); k++) {
+      await sleep(450);
+      const b = $('.tour-bubble');
+      if (!b) break;
+      docSteps.push(b.querySelector('h3').textContent + ' · ' + Math.round($('.tour-spot').getBoundingClientRect().width));
+      b.querySelector('.btn.primary').click();
+    }
+    await sleep(300);
+    report.log.push({ docTour: docSteps, docDone: w.localStorage.getItem('aira.tour.doc'), tourGone: !$('.tour') });
+    // After the tour the example card leaves the start screen; the "?" menu keeps it.
+    $('#home-btn').click(); await sleep(300);
+    $('#help-btn').click(); await sleep(200);
+    report.log.push({ exampleCardHidden: $('[data-start="example"]').hidden, menu: $$('.help-menu .menu-item').map(b => b.textContent) });
+    $$('.help-menu .menu-item').find(b => b.textContent.includes('Пройти обучение')).click(); await sleep(500);
+    report.log.push({ tourAgain: !!$('.tour .tour-bubble'), cardShownDuringTour: !$('[data-start="example"]').hidden });
+    w.document.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await sleep(400);
+    report.log.push({ cardHiddenAfter: $('[data-start="example"]').hidden });
+    return;
+  }
+
+  if (s === 'tourshot') {
+    // Stop on a tour step for a screenshot: ?s=tourshot&t=start|doc&n=<step index>&keep=1
+    const q = new URLSearchParams(location.search), doc = q.get('t') === 'doc', n = Number(q.get('n') || 0);
+    await until(() => $('.tour .tour-bubble'));
+    if (doc) {
+      await sleep(400);
+      while ($('.tour .btn.primary')?.textContent !== 'Открыть пример') { $('.tour .btn.primary').click(); await sleep(250); }
+      $('.tour .btn.primary').click();
+      await until(() => $('.tour:not(.out) .tour-bubble'), 30000);
+    }
+    for (let k = 0; k < n; k++) { await sleep(300); $('.tour .btn.primary').click(); }
+    await sleep(900);
+    report.log.push({ at: $('.tour-bubble h3')?.textContent });
+    return;
+  }
+
+  if (s === 'blockers') {
+    // DOCX with soft hyphens, a Word symbol and a formula: AIRA warns up front and does not send the check.
+    const app = w.AIRA.debug, name = 'С переносами ' + Date.now() % 100000;
+    const bytes = new w.Uint8Array(await (await fetch('sample-blockers.docx')).arrayBuffer());
+    await app.importer.importDocx(name, bytes);
+    await app.refreshDocs();
+    (await until(() => $$('#doc-list .doc-link').find(b => b.textContent.includes(name)))).click();
+    await until(() => !$('#check-notice').hidden, 20000);
+    await sleep(500);
+    report.log.push({ notice: $$('#check-notice li').map(x => x.textContent.split('.')[0]), checkDisabled: $('.check-btn').disabled,
+      note: $('.check .note')?.textContent });
+    d.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', ctrlKey: true, bubbles: true }));
+    await sleep(600);
+    report.log.push({ phase: app.workspace.client(app.activeId).analysis.status().phase, pop: $('.mk-pop .mk-msg')?.textContent });
+    return;
+  }
+
+  if (s === 'refused') {
+    // The backend refuses a check AIRA did not foresee (local-refused.docx, kept out of git):
+    // the reason is shown, and the document can still be closed, exported and the app closed.
+    const app = w.AIRA.debug, name = 'Отказ проверки ' + Date.now() % 100000;
+    const bytes = new w.Uint8Array(await (await fetch('local-refused.docx')).arrayBuffer());
+    await app.importer.importDocx(name, bytes);
+    await app.refreshDocs();
+    (await until(() => $$('#doc-list .doc-link').find(b => b.textContent.includes(name)))).click();
+    await until(() => $('.check-btn') && !$('.check-btn').disabled, 20000);
+    $('.check-btn').click();
+    await until(() => $('.check .alert.error'), 30000);
+    await sleep(800);
+    const a = app.workspace.client(app.activeId).analysis.status();
+    report.log.push({ phase: a.phase, code: a.receipt?.error_code, panel: $$('.check .alert.error p').map(x => x.textContent).join(' | '),
+      sidebarSpinner: !!$('#open-list .spinner') });
+    let captured = null;
+    app.host.saveDocx = async (n, b) => { captured = { size: b.byteLength, zip: b[0] === 0x50 }; return { saved: true, path: 'C:/test/' + n }; };
+    $('#export-btn').click();
+    await until(() => captured || $$('.mk-pop').length, 20000);
+    report.log.push({ export: captured });
+    $$('#open-list .doc-item').find(li => li.textContent.includes(name)).querySelector('.icon-btn').click();
+    await sleep(1500);
+    report.log.push({ closePrompt: $('.modal h2')?.textContent || null, stillOpen: $$('#open-list .doc-item').some(li => li.textContent.includes(name)) });
+    // Reopen in the same session, then let the harness close the app (prepareToClose must succeed).
+    (await until(() => $$('#doc-list .doc-link').find(b => b.textContent.includes(name)))).click();
+    await until(() => $$('#open-list .doc-item').some(li => li.textContent.includes(name)), 20000);
+    report.log.push({ reopened: true, closeAll: await w.AIRA.prepareToClose() });
+    return;
+  }
+
+  if (s === 'autosave') {
+    // No "Сохранить" click: 5 s after the last edit the version is saved by itself.
+    $('[data-start="create"]').click();
+    await until(() => $('.modal input'));
+    $('.modal input').value = 'Автосохранение';
+    $('.modal .btn.primary').click();
+    await until(() => $('#paper .doc .para'));
+    $('#paper .doc').focus();
+    w.getSelection().collapse($('#paper .doc .para'), 0);
+    d.execCommand('insertText', false, 'Система хранит не более 500 карточек.');
+    await sleep(1500);
+    const before = $('#save-status').textContent;
+    await sleep(3000);
+    const at4 = $('#save-status').textContent;
+    await until(() => $('#save-status').textContent.includes('Сохранено'), 15000);
+    report.log.push({ before, at4, after: $('#save-status').textContent, toasts: $$('.toast').length });
+    return;
+  }
+
+  if (s === 'mascot') {
+    // A real warning: Ctrl+Enter on an empty new document. The meerkat pops up instead of a toast.
+    $('[data-start="create"]').click();
+    await until(() => $('.modal input'));
+    const name = 'Пустой документ ' + Date.now() % 100000;
+    $('.modal input').value = name;
+    $('.modal .btn.primary').click();
+    await until(() => $('#paper .doc .para'));
+    await sleep(500);
+    d.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', ctrlKey: true, bubbles: true }));
+    await until(() => $('.mk-pop.in'), 5000);
+    await sleep(900);
+    const pop = $('.mk-pop');
+    report.log.push({ pop: pop.className, title: pop.querySelector('.mk-title').textContent, msg: pop.querySelector('.mk-msg').textContent,
+      mood: [...pop.querySelector('.meerkat').classList].find(c => c.startsWith('mood-')), toastsShown: $$('.toast').length });
+    // The meerkat message reaches the downloadable diagnostics log; without the session token the log is closed.
+    await sleep(500);
+    const token = w.AIRA.debug.host.sessionToken;
+    const logText = await (await fetch('/aira/diagnostics/log', { headers: { 'X-AIRA-Session': token } })).text();
+    const denied = (await fetch('/aira/diagnostics/log')).status;
+    report.log.push({ logHasUi: logText.includes('[ui] warn: Введите текст требований'), logLines: logText.split('\n').length, deniedWithoutToken: denied,
+      helpMenu: (() => { $('#help-btn').click(); const items = $$('.help-menu .menu-item').map(b => b.textContent); $('#help-btn').click(); return items; })() });
+    // Hide a document from the list and bring it back.
+    await w.AIRA.debug.refreshDocs(); await sleep(300);
+    const item = $$('#doc-list .doc-item').find(li => li.textContent.includes(name));
+    item.querySelector('[aria-label="Убрать из списка"]').click();
+    await sleep(300);
+    report.log.push({ hidden: !$$('#doc-list .doc-item').some(li => li.textContent.includes(name)), toggle: $('#hidden-toggle').textContent });
+    $('#hidden-toggle').click(); await sleep(300);
+    const back = $$('#doc-list .doc-item.hidden-doc').find(li => li.textContent.includes(name));
+    back.querySelector('[aria-label="Вернуть в список"]').click(); await sleep(300);
+    report.log.push({ restored: $$('#doc-list .doc-item:not(.hidden-doc)').some(li => li.textContent.includes(name)), toggleHidden: $('#hidden-toggle').hidden });
+    return;
+  }
+
+  if (s === 'sidebar-new') {
+    // Sidebar button asks for a title and creates the document, even when the start screen is shown.
+    $('#new-doc').click();
+    await until(() => $('.modal input'));
+    $('.modal input').value = 'Из боковой панели';
+    $('.modal .btn.primary').click();
+    await until(() => $('#paper .doc .para'));
+    report.log.push({ opened: !$('#doc-view').hidden, title: $('#doc-title')?.textContent, open: $$('#open-list .doc-item').length });
+    // Logo goes back to the start screen without closing the document.
+    $('#home-btn').click();
+    await sleep(300);
+    report.log.push({ start: !$('#start').hidden, open: $$('#open-list .doc-item').length });
+    return;
+  }
+
+  const typeIn = async (text) => { d.execCommand('insertText', false, text); await sleep(50); };
+  const enter = async () => { d.execCommand('insertParagraph'); await sleep(50); };
+  const idle = () => until(() => { const ed = w.AIRA?.activeEditor(); return ed && !ed.localPending; }, 30000);
+
+  if (s === 'create' || s === 'save' || s === 'close') {
+    $('[data-start="create"]').click();
+    await until(() => $('.modal input'));
+    $('.modal input').value = 'Требования к каталогу';
+    $('.modal .btn.primary').click();
+    await until(() => $('#paper .doc .para'));
+    const doc = $('#paper .doc');
+    doc.focus();
+    const first = $('#paper .doc .para');
+    w.getSelection().collapse(first, 0);
+    await typeIn('Каталог товаров');
+    await sleep(900);
+    await enter();
+    await sleep(300);
+    await typeIn('Система должна быстро показывать товары и т.д.');
+    await sleep(1200);
+    await idle();
+    report.log.push({ paras: $$('#paper .para').map(p => p.textContent), status: $('#save-status').textContent });
+    // Heading style on the first paragraph
+    w.getSelection().collapse($('#paper .para'), 0);
+    const sel = $('#style-select'); sel.value = '1'; sel.dispatchEvent(new Event('change'));
+    await sleep(1500); await idle();
+    report.log.push({ firstTag: $('#paper .para').tagName });
+    if (s === 'save' || s === 'close') {
+      $('#save-btn').click();
+      await until(() => $('#save-status').textContent.includes('Сохранено'), 15000);
+      report.log.push({ saved: $('#save-status').textContent, sidebar: $$('#doc-list .name').map(x => x.textContent) });
+    }
+    if (s === 'close') {
+      const ok = await w.AIRA.prepareToClose();
+      report.log.push({ prepareToClose: ok, open: $$('#open-list .doc-item').length });
+    }
+    return;
+  }
+
+  if (s === 'import') {
+    const app = w.AIRA.debug;
+    const bytes = new w.Uint8Array(await (await fetch('sample-table-image.docx')).arrayBuffer());
+    // Same path as the start-screen import, without the native file picker.
+    await app.importer.importDocx('Импорт с таблицей', bytes);
+    await app.refreshDocs();
+    // Open through the UI list so the normal flow is used.
+    const btn = await until(() => $$('#doc-list .doc-link').find(b => b.textContent.includes('Импорт с таблицей')));
+    btn.click();
+    await until(() => $('#paper table') && $('#paper .obj'), 20000);
+    await sleep(1500);
+    report.log.push({ table: $$('#paper td').length, img: !!$('#paper .obj img'), objText: $('#paper .obj')?.textContent, heading: $('#paper h1')?.textContent });
+    // Edit text inside a table cell.
+    const cellP = $$('#paper td .para')[3];
+    w.getSelection().collapse(cellP.firstChild, cellP.firstChild.length);
+    await typeIn(' за 2 секунды');
+    await sleep(1200); await idle(); await sleep(300);
+    report.log.push({ cell: $$('#paper td .para')[3].textContent });
+    // Paste two lines into the last paragraph (backend paste_text creates paragraphs).
+    const last = $$('#paper .doc > .para').at(-1);
+    w.getSelection().collapse(last.firstChild, last.firstChild.length);
+    const dt = new DataTransfer(); dt.setData('text/plain', '\nПервая вставленная строка.\nВторая вставленная строка.');
+    $('#paper .doc').dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+    await sleep(1500); await idle();
+    report.log.push({ afterPaste: $$('#paper .doc > .para').map(p => p.textContent).slice(-3) });
+    // Backspace at the start of the last paragraph joins it with the previous one.
+    const p2 = $$('#paper .doc > .para').at(-1);
+    w.getSelection().collapse(p2.firstChild, 0);
+    d.execCommand('delete');
+    await sleep(1500); await idle();
+    report.log.push({ afterJoin: $$('#paper .doc > .para').map(p => p.textContent).slice(-2) });
+    // Undo restores the two paragraphs.
+    $('[data-cmd="undo"]').click();
+    await sleep(1500); await idle();
+    report.log.push({ afterUndo: $$('#paper .doc > .para').map(p => p.textContent).slice(-2) });
+    // Export: capture bytes instead of the native save dialog.
+    let captured = null;
+    app.host.saveDocx = async (name, b) => { captured = { name, size: b.byteLength, zip: b[0] === 0x50 && b[1] === 0x4b }; return { saved: true, path: 'C:/test/' + name }; };
+    $('#export-btn').click();
+    await until(() => captured, 20000);
+    await sleep(500);
+    report.log.push({ export: captured, status: $('#save-status').textContent });
+    return;
+  }
+
+  if (['example', 'filters', 'drawer', 'stale'].includes(s)) {
+    $('[data-start="example"]').click();
+    await until(() => { const rec = $('.modal [data-id="recover"]'); if (rec) { report.log.push({ recoveryPrompt: true }); rec.click(); } return $$('#paper .para').length > 5; }, 30000);
+    await sleep(800);
+    report.log.push({ paras: $$('#paper .para').length, lists: $$('#paper .para.li').length, h1: $$('#paper h1').length, banner: !$('#example-banner').hidden });
+    $('.check-btn').click();
+    await sleep(500);
+    await until(() => { const c = w.AIRA.debug.workspace.client(w.AIRA.debug.activeId), a = c.analysis.status();
+      return (a.phase === 'finished' && !c.review.status().busy && ($('.results .cards') || $('.results .alert.error'))) || $('.check .alert.error'); }, 120000);
+    await sleep(800);
+    const app = w.AIRA.debug, c = app.workspace.client(app.activeId);
+    const a = c.analysis.status(), r0 = c.review.status();
+    const dbg = { analysis: a.phase, run: a.receipt?.run_id, status: a.receipt?.state?.status, review: r0.phase };
+    if (!r0.review && a.receipt?.run_id) {
+      try { await c.review.load(a.receipt.run_id); dbg.manual = 'ok'; } catch (e) { dbg.manual = e.code; }
+      dbg.after = c.review.status().phase;
+    }
+    report.log.push(dbg);
+    report.log.push({ cards: $$('.card').length, chips: $$('.fchip').map(c => c.textContent + (c.disabled ? ' (off)' : '')), fixture: $$('.results .alert.info').some(x => x.textContent.includes('Тестовый режим')),
+      highlights: w.CSS.highlights ? [...w.CSS.highlights.keys()] : 'n/a', errors: $$('.alert.error').map(x => x.textContent) });
+    if (s === 'filters') {
+      const chip = $$('.fchip').find(c => !c.disabled && !c.classList.contains('on') && !c.textContent.startsWith('Все'));
+      if (chip) { chip.click(); await sleep(1500); }
+      report.log.push({ after: $$('.fchip').map(c => c.textContent + (c.classList.contains('on') ? ' *' : '')), cards: $$('.card').length });
+      const q = $$('.fchip').find(c => c.textContent.startsWith('Вопросы'));
+      if (q && !q.disabled) { q.click(); await sleep(1500); }
+      report.log.push({ questions: $$('.fchip').map(c => c.textContent + (c.classList.contains('on') ? ' *' : '')),
+        findingCards: $$('.card:not(.question)').length, questionCards: $$('.card.question').length });
+    }
+    if (s === 'drawer') { $('#drawer-close').click(); await sleep(300); report.log.push({ rail: getComputedStyle($('#rail')).display }); }
+    if (s === 'stale') {
+      const p = $$('#paper .para')[2];
+      w.getSelection().collapse(p.firstChild, 3);
+      await typeIn(' правка');
+      await sleep(1500); await idle(); await sleep(500);
+      report.log.push({ stale: !!$('.results .alert.warn'), highlights: [...w.CSS.highlights.keys()] });
+    }
+  }
+}
+</script>
