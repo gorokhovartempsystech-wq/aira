@@ -5,7 +5,7 @@ const HASH = /^[0-9a-f]{64}$/;
 const CODES = new Set(["invalid_input", "invalid_response", "busy", "inactive",
   "counter_exhausted", "identity_unavailable", "transport_error", "request_failed",
   "request_rejected", "conflict", "session_expired"]);
-const ACTIONS = new Set(["capture", "insert_text", "paste_text", "enter", "join_previous",
+const ACTIONS = new Set(["capture", "insert_text", "insert_table", "insert_image", "paste_text", "enter", "join_previous",
   "join_next", "insert_soft_break", "undo", "redo", "range_edit", "structure", "format"]);
 
 export class DocxClientError extends Error {

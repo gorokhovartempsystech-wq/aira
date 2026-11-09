@@ -5,12 +5,22 @@ import re
 from ara.docx_analysis.visible_main._reader import boolean, check
 from ara.docx_analysis.visible_style_lists._reader import ListReader
 
+from ._atoms import literal_math, symbol
 from ._controls import Grammar
+from ._layout import borders, positional_tab
 from ._tabs import tabs
 
 
 class Reader(ListReader):
     def extended_inline(self, child, paragraph, *, in_link, top):
+        math_ns = (
+            "http://purl.oclc.org/ooxml/officeDocument/math"
+            if "purl.oclc.org" in self.ns
+            else "http://schemas.openxmlformats.org/officeDocument/2006/math"
+        )
+        if child.tag == "{" + math_ns + "}oMath":
+            literal_math(self, child, paragraph)
+            return
         if self.name(child) == "proofErr":
             self.attrs(child, {"type"}, {"type"})
             self.leaf(child)
@@ -20,6 +30,22 @@ class Reader(ListReader):
         return super().extended_inline(child, paragraph, in_link=in_link, top=top)
 
     def extended_run(self, child, plan):
+        name = self.name(child)
+        if name == "sym":
+            plan.atoms.append(("symbol", child, symbol(self, child)))
+            return
+        if name in ("softHyphen", "noBreakHyphen"):
+            self.attrs(child)
+            self.leaf(child)
+            if name == "softHyphen":
+                self.event("metadata", "optional_hyphen", child)
+            else:
+                plan.atoms.append(("nonbreaking_hyphen", child, "\u2011"))
+            return
+        if name == "ptab":
+            positional_tab(self, child)
+            plan.atoms.append(("tab", child, "\t"))
+            return
         if self.name(child) == "lastRenderedPageBreak":
             self.attrs(child)
             self.leaf(child)
@@ -50,6 +76,9 @@ class Reader(ListReader):
         return Grammar
 
     def formatting_property(self, node, kind):
+        if kind == "pPr" and self.name(node) == "pBdr":
+            borders(self, node, check)
+            return
         if kind == "pPr" and self.name(node) == "shd":
             self.leaf(node)
             self.attrs(node, {"val", "color", "fill", "themeFill"}, {"val"})

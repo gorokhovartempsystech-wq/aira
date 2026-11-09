@@ -40,3 +40,35 @@ Unknown or unsupported content returns an incomplete snapshot with no partial an
 fragments, generated labels or note references. Malformed packages and quota violations retain
 the existing explicit exception behavior. No network, external font loading or model call is
 performed. Storage/review/native desktop admission follows in its own integration cycle.
+
+## Ordinary layout extension — D03-20B (9 November 2026)
+
+The accepted team reader from `main@e71415c` also handles the bounded CRM layout
+subset (proofing/page-cache markers, tab stops, Word theme-family metadata).
+The new layout extension retains the original package and supports:
+
+- Optional `w:softHyphen` as a zero-width discretionary layout point, recorded in
+  coverage. It does not split the word sent for analysis.
+- `w:noBreakHyphen` as U+2011 with source-slice kind `nonbreaking_hyphen` and an
+  anchor to that original element. Consumers must not interpret it as a `w:t`.
+- Positional tabs as `tab` slices with original `w:ptab` anchors.
+- Closed paragraph-border properties in direct formatting and paragraph styles.
+- Partial style numbering properties: absent `numId` continues inheritance;
+  only explicit `numId=0` cancels numbering. Conflicting levels still refuse.
+
+Older source profiles retain their previous validation rules. This is not a
+claim of support for every Word object or the missing original Mac document.
+
+## Closed symbolic atoms — D03-20C (9 November 2026)
+
+The reader also accepts the verified Wingdings check mark (`00FC`/`F0FC`) as
+U+2713 and literal inline Office Math runs (`m:oMath/m:r/m:t`). Math is not
+computed or rewritten. Word visibility and field-code exclusion still apply.
+Unknown font glyphs and structured equations (fractions, powers, matrices)
+refuse atomically; VML support is not claimed.
+
+The two v5 review JSON schemas now include `symbol` and `nonbreaking_hyphen`
+source-slice kinds. Anchors refer to the original XML elements and offsets to
+their decoded characters. Consumers must update their closed enums alongside
+the backend. The team synthetic blocker sample now reads all six fragments;
+this does not verify the missing original Mac file or ML semantic accuracy.

@@ -12,11 +12,16 @@ from ._models import PROFILE, NoteReference, NoteSnapshot
 
 
 def validate(
-    snapshot, limits, *, profile=PROFILE, style_profile="docx-visibility/styles-context-v1"
+    snapshot,
+    limits,
+    *,
+    profile=PROFILE,
+    style_profile="docx-visibility/styles-context-v1",
+    shape_type=Shape,
 ):
     try:
         require(type(snapshot) is NoteSnapshot)
-        shape = Shape(VisibleLimits(), profile=profile, style_profile=style_profile)
+        shape = shape_type(VisibleLimits(), profile=profile, style_profile=style_profile)
         for f in fields(VisibleSnapshot):
             shape.value(
                 getattr(snapshot, f.name), SCHEMAS[VisibleSnapshot][f.name], f.name, VisibleSnapshot

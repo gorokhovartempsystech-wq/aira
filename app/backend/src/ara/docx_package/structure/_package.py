@@ -24,8 +24,19 @@ def repack(data, source, main, limits):
     return repack_parts(data, source, {source.main_part: main}, limits)
 
 
-def repack_parts(data, source, replacements, limits):
+def repack_parts(data, source, replacements, limits, *, additions=None):
     entries = {entry.name: entry for entry in source.entries}
+    additions = {} if additions is None else additions
+    if type(additions) is not dict or any(
+        type(name) is not str
+        or not name
+        or name in entries
+        or any(part in ("", ".", "..") for part in name.split("/"))
+        or any(c in name for c in "\\\x00:?#%")
+        or type(payload) is not bytes
+        for name, payload in additions.items()
+    ):
+        raise DocxError("invalid_input")
     if type(replacements) is not dict or any(
         name not in entries or type(payload) is not bytes for name, payload in replacements.items()
     ):
@@ -46,12 +57,23 @@ def repack_parts(data, source, replacements, limits):
             total += sum(
                 len(payload) - entries[name].size_bytes for name, payload in replacements.items()
             )
+            total += sum(len(payload) for payload in additions.values())
             if (
                 any(
                     len(payload) > min(limits.max_xml_bytes, limits.max_part_bytes)
                     for payload in replacements.values()
                 )
                 or total > limits.max_total_uncompressed_bytes
+                or len(entries) + len(additions) > limits.max_entries
+                or any(
+                    len(payload)
+                    > (
+                        min(limits.max_xml_bytes, limits.max_part_bytes)
+                        if name.endswith((".xml", ".rels"))
+                        else limits.max_part_bytes
+                    )
+                    for name, payload in additions.items()
+                )
             ):
                 raise DocxError("package_limit_exceeded")
             with io.BytesIO() as output:
@@ -75,6 +97,14 @@ def repack_parts(data, source, replacements, limits):
                         info.external_attr = original.external_attr
                         if output.tell() > limits.max_archive_bytes:
                             raise DocxError("package_limit_exceeded")
+                    for name, payload in additions.items():
+                        info = zipfile.ZipInfo(name)
+                        info.compress_type = zipfile.ZIP_DEFLATED
+                        destination.writestr(info, payload)
+                        if output.tell() > limits.max_archive_bytes:
+                            raise DocxError("package_limit_exceeded")
+                if output.tell() > limits.max_archive_bytes:
+                    raise DocxError("package_limit_exceeded")
                 return output.getvalue()
     except EditError:
         raise StructureError("unsupported_structure") from None

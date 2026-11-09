@@ -16,10 +16,12 @@ export function createAnalysisSession({documentId, editor, send,
   let closed=false, ordinary=false, stopping=false, stopRequested=false;
   let generation=0;
   const finished=()=>receipt?.phase==='finished' && TERMINAL.has(receipt?.state?.status);
+  const rejected=()=>receipt?.phase==='not_admitted'&&receipt.run_id===null&&receipt.state===null;
+  const settled=()=>finished()||rejected();
   function status(){return copyJson({phase,receipt,stopRequested,
-    busy:ordinary,canCheck:!closed&&!ordinary&&(!pending||finished()||phase==='not_admitted'),
-    canStop:!closed&&pending!==null&&!finished()&&!stopping,
-    canRetryAdmission:!closed&&!ordinary&&pending!==null&&['admission_uncertain','not_admitted','poll_error'].includes(phase),
+    busy:ordinary,canCheck:!closed&&!ordinary&&(!pending||settled()),
+    canStop:!closed&&pending!==null&&!settled()&&!stopping,
+    canRetryAdmission:!closed&&!ordinary&&!rejected()&&pending!==null&&['admission_uncertain','not_admitted','poll_error'].includes(phase),
     canRetrySave:!closed&&!ordinary&&phase==='save_uncertain'});}
   function emit(){try{Promise.resolve(onState(status())).catch(()=>{});}catch(_){}}
   function clearTimer(){const old=timer;timer=null;if(old!==null)try{cancel(old.handle);}catch(_){}}
@@ -49,8 +51,8 @@ export function createAnalysisSession({documentId, editor, send,
     }else requireValue(value.phase!=='finished','invalid_response');
     if(receipt?.run_id!==null&&receipt?.run_id!==undefined&&value.run_id!==null)
       requireValue(value.run_id===receipt.run_id,'invalid_response');
-    // An older in-flight poll cannot regress a terminal Stop response.
-    if(finished())return;
+    // An older in-flight poll cannot regress a terminal result or proven refusal.
+    if(settled())return;
     stopRequested ||= value.stop_requested;
     receipt=value;
     phase=finished()?'finished':value.phase==='not_admitted'?'not_admitted':'waiting';
@@ -92,12 +94,12 @@ export function createAnalysisSession({documentId, editor, send,
   }
   async function refresh(){
     requireValue(!closed&&pending!==null&&!ordinary,'busy');
-    if(finished())return status();
+    if(settled())return status();
     clearTimer();ordinary=true;const g=generation;
     try{
       const result=await send({path:prefix+'analysis-requests/'+pending.key,method:'GET'});live(g);
       requireValue(result?.status===200,'request_failed');accept(result.body);arm();return status();
-    }catch(error){if(!closed&&!finished()){phase='poll_error';clearTimer();emit();}throw safeError();}
+    }catch(error){if(!closed&&!settled()){phase='poll_error';clearTimer();emit();}throw safeError();}
     finally{ordinary=false;emit();}
   }
   return Object.freeze({status,check:()=>saveAndCheck(false),retrySave:()=>saveAndCheck(true),refresh,

@@ -21,13 +21,16 @@ def validate(
     snapshot_type=StyleListSnapshot,
     profile=PROFILE,
     style_profile=STYLE_PROFILE,
+    shape_type=Shape,
 ):
     try:
         require(type(snapshot) is snapshot_type)
         base = NoteSnapshot(**{f.name: getattr(snapshot, f.name) for f in fields(NoteSnapshot)})
-        validate_note(base, limits, profile=profile, style_profile=style_profile)
+        validate_note(
+            base, limits, profile=profile, style_profile=style_profile, shape_type=shape_type
+        )
         hard = VisibleLimits()
-        shape = Shape(hard, profile=profile, style_profile=style_profile)
+        shape = shape_type(hard, profile=profile, style_profile=style_profile)
         require(type(snapshot.lists) is tuple and len(snapshot.lists) <= hard.max_paragraphs)
         characters, references, chains = len(snapshot.analysis_text), 0, 0
         for item in snapshot.lists:

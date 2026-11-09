@@ -1,10 +1,13 @@
 """Bounded tagged native requests and an explicit deterministic fingerprint."""
 
+from base64 import b64encode
 from dataclasses import dataclass, field, fields
 from hashlib import sha256
 from json import JSONEncoder
 
 from ara.docx_package.editor import Caret, CaretTarget, EditorSelection, SelectionTarget
+from ara.docx_package.editor._images import ImageData
+from ara.docx_package.editor._objects import TableSize
 from ara.docx_package.formatting import ParagraphFormat
 from ara.docx_package.projection import SourceAnchor
 from ara.docx_package.ranges import RangeEdit, TextPosition
@@ -15,6 +18,8 @@ from ._errors import native_errors, validate
 ACTIONS = (
     "capture",
     "insert_text",
+    "insert_table",
+    "insert_image",
     "paste_text",
     "enter",
     "join_previous",
@@ -143,6 +148,12 @@ class EditorCommand:
             if action == "capture":
                 validate(after is None)
                 value = _selection(value)
+            elif action == "insert_table":
+                validate(after is None and type(value) is TableSize)
+                value = TableSize(getattr(value, "rows", None), getattr(value, "columns", None))
+            elif action == "insert_image":
+                validate(after is None and type(value) is ImageData)
+                value = ImageData(getattr(value, "data", None), getattr(value, "alt_text", None))
             elif action in ("insert_text", "paste_text"):
                 validate(after is None)
                 value = _string(value, 100000 if action == "insert_text" else 1000000)
@@ -167,6 +178,12 @@ def normalized(command):
 
 
 def _wire(value):
+    if type(value) is ImageData:
+        return dict(
+            type="ImageData",
+            data_base64=b64encode(value.data).decode("ascii"),
+            alt_text=value.alt_text,
+        )
     if value is None or type(value) in (str, int):
         return value
     if type(value) is tuple:
@@ -175,6 +192,7 @@ def _wire(value):
         type(value)
         in (
             EditorCommand,
+            TableSize,
             SourceAnchor,
             Caret,
             CaretTarget,
@@ -218,6 +236,12 @@ def execute(editor, command, revision):
     with native_errors():
         if action == "capture":
             return editor.capture(value, expected_revision=revision)
+        if action == "insert_table":
+            return editor.insert_table(value.rows, value.columns, expected_revision=revision)
+        if action == "insert_image":
+            return editor.insert_image(
+                value.data, alt_text=value.alt_text, expected_revision=revision
+            )
         if action == "insert_text":
             return editor.insert_text(value, expected_revision=revision)
         if action == "paste_text":
