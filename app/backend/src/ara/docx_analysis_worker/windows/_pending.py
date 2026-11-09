@@ -6,7 +6,7 @@ import threading
 from dataclasses import dataclass, field
 from weakref import WeakSet
 
-from ._errors import LocalResource, WindowsRuntimeError
+from ._errors import ClosedPipeError, LocalResource, WindowsRuntimeError
 from ._io_abi import OVERLAPPED
 
 _REGISTRY, _ISSUED = {}, WeakSet()
@@ -100,6 +100,7 @@ class PendingIO(LocalResource):
             self._finish(IOResult("read", 0, b"", eof=True))
         elif status in (109, 232, 233) and self._kind == "write":
             self._finish(IOResult("write", 0, b"", eof=True))
+            self._poll()
         elif status not in (0, 997):
             self._finish(error=True)
             raise WindowsRuntimeError("runtime_unavailable")
@@ -147,6 +148,8 @@ class PendingIO(LocalResource):
             self._finish(result, error)
         if self._error:
             raise WindowsRuntimeError("runtime_unavailable")
+        if self._result.kind == "write" and self._result.eof:
+            raise ClosedPipeError()
         return self._result
 
     def poll(self):

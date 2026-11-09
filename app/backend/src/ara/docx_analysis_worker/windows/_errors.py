@@ -19,6 +19,10 @@ class WindowsRuntimeError(Exception):
         super().__init__(self.code)
 
 
+class ClosedPipeError(WindowsRuntimeError):
+    """A completed write failed because its peer closed the pipe."""
+
+
 class LocalResource:
     __slots__ = ("__weakref__",)
 

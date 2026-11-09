@@ -2,6 +2,7 @@
 
 from ..wire import encode_message
 from ._attempt_state import close_endpoints
+from ._errors import ClosedPipeError
 
 
 class Writer:
@@ -10,6 +11,26 @@ class Writer:
         self.seq = self.total = 0
 
     def send(self, lease, cutoff, command=None):
+        try:
+            return self._send(lease, cutoff, command)
+        except ClosedPipeError:
+            return self._closed(command)
+
+    def _closed(self, command):
+        s = self.state
+        if command is None:
+            s.stop("transport", True)
+            return False
+        # Reject renewal and let the data reader verify completion within
+        # the already accepted lease. No new permission was delivered.
+        with s.cv:
+            s.control_eof = True
+            if command.outcome == "pending":
+                command.outcome = "rejected"
+            s.cv.notify_all()
+        return False
+
+    def _send(self, lease, cutoff, command=None):
         s = self.state
         frame = encode_message(
             s.binding,
@@ -42,15 +63,7 @@ class Writer:
             result = op.poll()
             if result is not None:
                 if result.eof and command is not None:
-                    # The guardian retires the control pipe before sending its
-                    # closed status. Reject renewal but let the data reader
-                    # verify completion within the already accepted lease.
-                    with s.cv:
-                        s.control_eof = True
-                        if command.outcome == "pending":
-                            command.outcome = "rejected"
-                        s.cv.notify_all()
-                    return False
+                    return self._closed(command)
                 if result.aborted or result.eof or result.count != len(frame):
                     s.stop("transport", True)
                     return False
