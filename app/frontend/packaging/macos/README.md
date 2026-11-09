@@ -19,7 +19,7 @@ payload/
 Из рабочего дерева с актуальным frontend:
 
 ```sh
-python3 app/frontend/packaging/macos/build.py --payload /absolute/path/to/payload --output /absolute/path/to/AIRA-0.2.1-apple-silicon.dmg
+python3 app/frontend/packaging/macos/build.py --payload /absolute/path/to/payload --output /absolute/path/to/AIRA-0.2.2-apple-silicon.dmg
 ```
 
 Открыть образ и перенести AIRA.app в папку приложений. Пилот использует локальную подпись для проверки целостности. Для распространения готовится отдельная подписанная поставка.

@@ -46,7 +46,7 @@ def main():
                 "CFBundleIdentifier": "org.aira.mac-pilot",
                 "CFBundleName": "AIRA",
                 "CFBundlePackageType": "APPL",
-                "CFBundleShortVersionString": "0.2.1",
+                "CFBundleShortVersionString": "0.2.2",
                 "CFBundleVersion": "1",
                 "LSMinimumSystemVersion": "13.0",
                 "NSHighResolutionCapable": True,

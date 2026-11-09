@@ -90,6 +90,16 @@ final class Desktop: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNaviga
         let source = """
         (() => {
           const connection = \(json.trimmed);
+          // WebKit serializes Origin as null for same-origin POST with no-referrer.
+          // Keep only the loopback origin as Referer and retain the verified Origin.
+          const pageFetch = window.fetch.bind(window);
+          window.fetch = (url, options) => {
+            if (typeof url === 'string' && url.startsWith(connection.origin + '/') &&
+                options?.mode === 'same-origin' && options.referrerPolicy === 'no-referrer') {
+              return pageFetch(url, {...options, referrerPolicy: 'origin'});
+            }
+            return pageFetch(url, options);
+          };
           const call = (op, fields = {}) => window.webkit.messageHandlers.aira.postMessage({op, ...fields});
           const decode = b64 => Uint8Array.from(atob(b64), c => c.charCodeAt(0));
           const encode = bytes => {
