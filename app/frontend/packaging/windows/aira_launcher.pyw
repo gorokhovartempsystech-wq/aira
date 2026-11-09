@@ -187,30 +187,57 @@ def stop_postgres():
 
 
 class LaunchError(Exception):
-    pass
+    def __init__(self, message, code=None):
+        super().__init__(message)
+        self.code = code
 
 
-# ---------- снятие блокировки после сбоя проверки ----------
-def stuck_failed_run(pg_port):
-    """Проверка упала, а отметка «воркер занят» осталась (сервер тогда не стартует).
-    Снимать её безопасно, только если тот запуск уже завершён."""
+# ---------- снятие блокировки после сбоя ----------
+# Если прошлый процесс AIRA завершился, не дождавшись воркера проверки (сбой, «Выйти» во время проверки,
+# выключение компьютера), запись воркера остаётся в «armed», и бэкенд не стартует (recovery_required).
+# На Windows воркеры живут в Job-объекте с «убить при закрытии»: раз старого процесса AIRA нет, нет и воркеров.
+# Тогда запись переводится в «drained» — это бэкенд сам записал бы после подтверждённого выхода воркера, —
+# и дальше он штатно восстанавливается: отменяет очередь, помечает прерванную проверку и очищает запись.
+def other_aira_processes():
+    """PID процессов Python из папки AIRA, кроме этого (например, воркер прошлого запуска)."""
+    k, psapi = ctypes.windll.kernel32, ctypes.windll.psapi
+    pids, got = (ctypes.c_ulong * 4096)(), ctypes.c_ulong()
+    if not psapi.EnumProcesses(pids, ctypes.sizeof(pids), ctypes.byref(got)):
+        return []
+    mine, root, out = os.getpid(), str(PY).lower(), []
+    k.OpenProcess.restype = ctypes.c_void_p
+    for pid in pids[: got.value // ctypes.sizeof(ctypes.c_ulong)]:
+        if not pid or pid == mine:
+            continue
+        h = k.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+        if not h:
+            continue
+        try:
+            buf, size = ctypes.create_unicode_buffer(1024), ctypes.c_ulong(1024)
+            if k.QueryFullProcessImageNameW(ctypes.c_void_p(h), 0, buf, ctypes.byref(size)) and buf.value.lower().startswith(root):
+                out.append(pid)
+        finally:
+            k.CloseHandle(ctypes.c_void_p(h))
+    return out
+
+
+def stuck_fence(pg_port):
     import psycopg
 
     with psycopg.connect(host="127.0.0.1", port=pg_port, user="postgres", dbname="aira") as c:
-        row = c.execute("select s.run_id from docx_analysis_supervisor s join docx_analysis_runs r on r.id = s.run_id "
-                        "where s.slot_key = 1 and s.phase = 'armed' "
-                        "and r.status in ('succeeded','failed','cancelled','timed_out')").fetchone()
-        return row[0] if row else None
+        row = c.execute("select s.phase, s.run_id, r.status from docx_analysis_supervisor s "
+                        "left join docx_analysis_runs r on r.id = s.run_id where s.slot_key = 1").fetchone()
+        return row if row and row[0] == "armed" else None
 
 
-def clear_stuck_run(pg_port, run_id):
+def release_stuck_fence(pg_port):
     import psycopg
 
     with psycopg.connect(host="127.0.0.1", port=pg_port, user="postgres", dbname="aira") as c:
-        c.execute("update docx_analysis_supervisor set phase='clean', revision=revision+1, launch_id=null, document_id=null, "
-                  "run_id=null, attempt_id=null, worker_instance_id=null, claim_fence=null "
-                  "where slot_key=1 and phase='armed' and run_id=%s", (run_id,))
-        print("cleared stuck analysis fence for run", run_id, flush=True)
+        n = c.execute("update docx_analysis_supervisor set phase='drained', revision=revision+1 "
+                      "where slot_key=1 and phase='armed'").rowcount
+    print(f"recovery: analysis worker record armed -> drained ({n} row)", flush=True)
+    return n == 1
 
 
 # ---------- сервер ----------
@@ -222,9 +249,12 @@ class Server:
     def start(self, pg_port, say):
         sys.executable = str(PY / "python.exe")  # воркер анализа — обычный python.exe (запускается без окна)
         sys.path.insert(0, str(FRONTEND))
+        t0 = time.monotonic()
+        print("startup: importing server modules…", flush=True)
         import uvicorn
 
         import aira_host
+        print(f"startup: modules imported in {time.monotonic() - t0:.1f} s", flush=True)
 
         port = pick_port(APP_PORT)
         self.url = f"http://127.0.0.1:{port}/aira/"
@@ -241,16 +271,25 @@ class Server:
         def serve():
             try:
                 self.server.run()
+            except SystemExit:
+                # uvicorn так сообщает о неудачном старте; причина — в app.state.startup_error.
+                pass
             except BaseException as e:  # noqa: BLE001
                 self.error = e
                 traceback.print_exc()
 
         self.thread = threading.Thread(target=serve, name="aira-server", daemon=True)
         self.thread.start()
+        deadline = time.monotonic() + 300
         while not self.server.started:
             if not self.thread.is_alive():
-                raise self.error or LaunchError("Сервер AIRA не запустился.")
+                code = getattr(app.state, "startup_error", None)
+                print(f"startup: server stopped during startup, code={code}", flush=True)
+                raise LaunchError("Сервер AIRA не запустился.", code=code) from self.error
+            if time.monotonic() > deadline:
+                raise LaunchError("Сервер AIRA не запустился за 5 минут.")
             time.sleep(0.1)
+        print(f"startup: server ready in {time.monotonic() - t0:.1f} s", flush=True)
         STATE.write_text(json.dumps({"url": self.url, "pid": os.getpid()}), encoding="utf-8")
         return self.url
 
@@ -271,13 +310,18 @@ def boot_backend(server, state, say, ask):
         return server.start(state["pg"], say)
     except Exception as e:
         code = getattr(e, "code", None) or getattr(server.error, "code", None)
-        run_id = stuck_failed_run(state["pg"]) if code == "recovery_required" else None
-        if not run_id:
+        fence = stuck_fence(state["pg"]) if code == "recovery_required" else None
+        print(f"startup refused: code={code} fence={fence}", flush=True)
+        if not fence:
             raise
-        if not ask("AIRA", "Прошлая проверка завершилась сбоем, и AIRA заблокировала новые проверки.\n\n"
-                           "Снять блокировку? Документы и результаты не пострадают."):
+        others = other_aira_processes()
+        if others:
+            print("recovery skipped: other AIRA processes are alive", others, flush=True)
+            raise LaunchError("Прошлый запуск AIRA ещё не завершился. Подождите минуту или перезагрузите "
+                              "компьютер и откройте AIRA снова.") from e
+        say("Восстанавливаемся после прошлого сбоя…")
+        if not release_stuck_fence(state["pg"]):
             raise
-        clear_stuck_run(state["pg"], run_id)
         server.__init__()
         return server.start(state["pg"], say)
 
@@ -305,12 +349,14 @@ html,body{margin:0;height:100%;font:15px/1.5 "Segoe UI",system-ui,sans-serif;bac
 h1{margin:10px 0 6px;font-size:22px}#s{color:#475467;margin:0}
 .sp{width:28px;height:28px;border:3px solid #e4e7ec;border-top-color:#4f5bd5;border-radius:50%;margin:18px auto 0;animation:r 1s linear infinite}
 @keyframes r{to{transform:rotate(360deg)}}.err .sp{display:none}.err #s{color:#c2352b}
-button{margin-top:16px;font:inherit;padding:7px 16px;border-radius:9px;border:1px solid #cfd4dd;background:#fff;cursor:pointer;display:none}
-.err button{display:inline-block}
+#t{color:#98a2b3;font-size:13px;margin:10px 0 0}#h{color:#667085;font-size:13px;max-width:340px;margin:8px auto 0;display:none}
+button{margin-top:16px;font:inherit;font-size:13.5px;padding:6px 14px;border-radius:9px;border:1px solid #cfd4dd;background:#fff;cursor:pointer}
 </style></head><body><div class="box"><div class="card" id="c"><img src="LOGO" width="56" height="56" alt="">
-<h1>AIRA</h1><p id="s">Запуск…</p><div class="sp"></div>
+<h1>AIRA</h1><p id="s">Запуск…</p><div class="sp"></div><p id="t"></p>
+<p id="h">Первый запуск может занять несколько минут: создаётся база и антивирус проверяет файлы программы.</p>
 <button onclick="window.pywebview.api.open_logs()">Открыть журнал</button></div></div>
-<script>window.setStatus=(t,e)=>{document.getElementById('s').textContent=t;document.getElementById('c').className=e?'card err':'card';}</script>
+<script>window.setStatus=(t,e)=>{document.getElementById('s').textContent=t;document.getElementById('c').className=e?'card err':'card';if(e){clearInterval(window.__tick);document.getElementById('h').style.display='none';}};
+const t0=Date.now();window.__tick=setInterval(()=>{const s=Math.floor((Date.now()-t0)/1000);document.getElementById('t').textContent=Math.floor(s/60)+':'+String(s%60).padStart(2,'0');if(s>=45)document.getElementById('h').style.display='block';},1000);</script>
 </body></html>"""
 
 
@@ -434,7 +480,7 @@ def run_desktop(log):
                     "licence: !document.getElementById('licence').hidden, tour: !!document.querySelector('.tour')})")
                 print("selftest page:", probe, flush=True)
                 window.destroy()
-        except Exception as e:  # noqa: BLE001
+        except BaseException as e:  # noqa: BLE001 — любой сбой должен попасть на заставку
             traceback.print_exc()
             msg = str(e) if isinstance(e, LaunchError) else "AIRA не запустилась."
             say(f"{msg} Подробности — в журнале.", True)
@@ -506,19 +552,22 @@ def run_browser(log):
             root.after(0, lambda: open_btn.configure(state="normal"))
             if not os.environ.get("AIRA_NO_BROWSER"):  # для автотестов сборки
                 webbrowser.open(url)
-        except Exception as e:  # noqa: BLE001
+        except BaseException as e:  # noqa: BLE001
             traceback.print_exc()
             msg = str(e) if isinstance(e, LaunchError) else "AIRA не запустилась."
             say(f"{msg} Подробности — в журнале: {log}")
 
     def quit_app(source="button"):
         print(f"quit requested: {source}", flush=True)
+        if state.get("quitting"):  # повторное «Выйти» во время выхода прерывало остановку воркера проверки
+            return
         if server.url:
             answer = messagebox.askyesno("Выйти из AIRA?", "Перед выходом сохраните документы в AIRA (кнопка «Сохранить»).\n\n"
                                                            "Остановить AIRA?", parent=root)
             print(f"quit confirmed: {answer}", flush=True)
             if not answer:
                 return
+        state["quitting"] = True
         quit_btn.configure(state="disabled")
         open_btn.configure(state="disabled")
         status.set("Завершаем работу…")

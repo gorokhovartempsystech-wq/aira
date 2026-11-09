@@ -187,11 +187,16 @@ def build_app(*, database_url, runtime_root, port, analysis="model", initialize=
     from ara.config import DatabaseSettings
     from ara.documents.runtime import DocumentRuntime
 
+    t0 = time.monotonic()
+    step = lambda what: diag(f"[startup] {what} ({time.monotonic() - t0:.1f} s)")  # noqa: E731
+    step("modules imported")
     root = private_root(runtime_root)
     settings = DatabaseSettings(database_url)
     engine = create_engine(settings.database_url.get_secret_value(), hide_parameters=True)
     if initialize:
+        step("database migrations…")
         init_database(engine)
+        step("database ready")
 
     runtime = DocumentRuntime(engine=engine, user_id=USER, project_id=PROJECT, mode="local")
     if analysis == "model":
@@ -199,6 +204,7 @@ def build_app(*, database_url, runtime_root, port, analysis="model", initialize=
     else:
         from ara.docx_analysis_worker.supervisor.word_fixture import create_word_fixture_supervisor as factory
     supervisor = factory(settings=settings, user_id=USER, project_id=PROJECT, installation_id=INSTALL, root=root)
+    step(f"analysis supervisor created ({analysis})")
     app = create_app(document_runtime=runtime, analysis_supervisor=supervisor, table_editor=True, field_editor=True)
     if licence_stub:
         licence_stub_routes(app)
@@ -209,20 +215,28 @@ def build_app(*, database_url, runtime_root, port, analysis="model", initialize=
     async def lifespan(application):
         import anyio
 
+        step("analysis supervisor starting…")
         supervisor.start()
         try:
-            deadline = time.monotonic() + 60
+            deadline, last = time.monotonic() + 120, 0.0
             while supervisor.view().phase != "ready":
                 view = supervisor.view()
                 if view.error_code or time.monotonic() > deadline:
+                    step(f"analysis supervisor failed: {view}")
+                    application.state.startup_error = view.error_code or "startup_timeout"
                     raise SupervisorError(view.error_code or "startup_timeout", view)
+                if time.monotonic() - last > 5:  # раз в 5 с — где именно ждём
+                    last = time.monotonic()
+                    step(f"analysis supervisor waiting: phase={view.phase}")
                 await anyio.sleep(0.05)
+            step("analysis supervisor ready")
             if on_ready:
                 on_ready()
             async with previous(application):
                 yield
         finally:
-            deadline = time.monotonic() + 30
+            # Воркеру проверки даём до 2 минут: если не дождаться, при следующем запуске бэкенд потребует восстановления.
+            deadline = time.monotonic() + 120
             while not supervisor.shutdown(timeout=0.1):
                 if time.monotonic() > deadline:
                     raise RuntimeError("Analysis supervisor cleanup not confirmed")
