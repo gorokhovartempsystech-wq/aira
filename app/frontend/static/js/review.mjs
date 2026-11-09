@@ -204,9 +204,9 @@ export function createReviewPanel({ body, rail, app }) {
             h('span', { class: 'timer' })),
           a.phase === 'poll_error' ? h('div', { class: 'alert warn' }, icon('alert'), h('div', {},
             'Связь с проверкой прервалась. Она может продолжаться.',
-            h('button', { class: 'btn sm', onclick: act(() => client.analysis.refresh(), 'Сервер пока не отвечает.') }, 'Обновить'))) : null,
+            h('button', { class: 'btn sm', 'data-pilot': 'analysis.refresh', onclick: act(() => client.analysis.refresh(), 'Сервер пока не отвечает.') }, 'Обновить'))) : null,
           h('p', { class: 'muted small' }, 'Лимит проверки — 5 минут. Текст можно править: результат отнесётся к сохранённой версии.'),
-          a.canStop ? h('button', { class: 'btn block', onclick: act(() => client.analysis.stop(), 'Не удалось отправить остановку.') }, icon('stop'), 'Остановить проверку') : null));
+          a.canStop ? h('button', { class: 'btn block', 'data-pilot': 'analysis.stop', onclick: act(() => client.analysis.stop(), 'Не удалось отправить остановку.') }, icon('stop'), 'Остановить проверку') : null));
       if (a.receipt?.fixture) box.append(fixtureNote());
       return box;
     }
@@ -236,7 +236,7 @@ export function createReviewPanel({ body, rail, app }) {
 
   function problem(text, label, fn) {
     return h('div', { class: 'alert error' }, meerkat({ mood: 'surprised', size: 40 }), h('div', {}, h('p', {}, text),
-      label ? h('button', { class: 'btn sm', onclick: act(fn, 'Повтор не удался — попробуйте ещё раз.') }, label) : null));
+      label ? h('button', { class: 'btn sm', 'data-pilot': 'analysis.retry', onclick: act(fn, 'Повтор не удался — попробуйте ещё раз.') }, label) : null));
   }
   const fixtureNote = () => h('div', { class: 'alert info' }, icon('info'),
     h('div', {}, h('strong', {}, 'Тестовый режим. '), 'Это учебный результат: настоящая модель не запускалась.'));
@@ -277,7 +277,7 @@ export function createReviewPanel({ body, rail, app }) {
     if (review.fixture) wrap.append(fixtureNote());
     if (r.stale) wrap.append(h('div', { class: 'alert warn' }, icon('alert'), h('div', {},
       'Текст изменён после проверки. Замечания относятся к прошлой версии, подсветка выключена. ',
-      h('button', { class: 'link', onclick: () => runCheck(id) }, 'Проверить снова'))));
+      h('button', { 'data-pilot': 'analysis.check', class: 'link', onclick: () => runCheck(id) }, 'Проверить снова'))));
     if (v.analysis_coverage?.state === 'partial') wrap.append(h('div', { class: 'alert warn' }, icon('alert'),
       h('div', {}, 'Проверка неполная: не все проверки успели выполниться. Отсутствие замечаний не означает, что их нет.')));
     if (r.phase === 'conflict') wrap.append(problem('Настройки показа изменились. Обновите результат и выберите снова.', 'Обновить', () => client.review.load(s.loadedRun)));
@@ -291,7 +291,7 @@ export function createReviewPanel({ body, rail, app }) {
     const chip = (fid, label, n, color) => {
       const on = filter === fid;
       const zero = n === 0 && !on;
-      return h('button', { class: `fchip${on ? ' on' : ''}`, disabled: zero || busy, 'aria-pressed': String(on),
+      return h('button', { 'data-pilot': 'review.filter', class: `fchip${on ? ' on' : ''}`, disabled: zero || busy, 'aria-pressed': String(on),
         title: zero ? 'Нет замечаний этого типа' : null,
         onclick: () => {
           if (on) return;
@@ -330,9 +330,9 @@ export function createReviewPanel({ body, rail, app }) {
 
     if (hidden.size || prefs.show_hidden) {
       wrap.append(h('div', { class: 'hidden-ctl' },
-        h('button', { class: 'link', disabled: busy, onclick: act(() => client.review.setFilters({ ...filterValue(filter === 'custom' ? 'all' : filter, !prefs.show_hidden) }), 'Не удалось изменить показ.') },
+        h('button', { 'data-pilot': 'review.visibility', class: 'link', disabled: busy, onclick: act(() => client.review.setFilters({ ...filterValue(filter === 'custom' ? 'all' : filter, !prefs.show_hidden) }), 'Не удалось изменить показ.') },
           prefs.show_hidden ? 'Не показывать скрытые' : `Показать скрытые (${v.counts.hidden_findings ?? hidden.size})`),
-        hidden.size ? h('button', { class: 'link', disabled: busy, onclick: act(() => client.review.clearHidden(), 'Не удалось вернуть скрытые замечания.') }, 'Вернуть все скрытые') : null));
+        hidden.size ? h('button', { 'data-pilot': 'review.visibility', class: 'link', disabled: busy, onclick: act(() => client.review.clearHidden(), 'Не удалось вернуть скрытые замечания.') }, 'Вернуть все скрытые') : null));
     }
     wrap.append(h('p', { class: 'muted small foot' }, 'Это подсказки для аналитика: решение, ошибка ли это, принимаете вы. Исправления вносятся вручную.'));
     return wrap;
@@ -349,7 +349,7 @@ export function createReviewPanel({ body, rail, app }) {
         h('span', { class: 'type' }, TYPE_NAME[f.type] || f.type),
         h('span', { class: `conf ${f.assessment}` }, f.assessment === 'red' ? 'Уверенно' : 'Проверьте'),
         isHidden ? h('span', { class: 'pill' }, 'скрыто') : null,
-        h('button', { class: 'icon-btn xs', title: isHidden ? 'Вернуть замечание' : 'Скрыть замечание',
+        h('button', { 'data-pilot': 'review.visibility', class: 'icon-btn xs', title: isHidden ? 'Вернуть замечание' : 'Скрыть замечание',
           onclick: ev => { ev.stopPropagation(); act(() => client.review.setHidden(f.finding_id, !isHidden), 'Не удалось изменить видимость замечания.')(); } },
           icon(isHidden ? 'eye' : 'eye-off'))),
       quote(f.primary),
