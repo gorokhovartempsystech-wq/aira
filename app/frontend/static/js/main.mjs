@@ -4,6 +4,7 @@ import { $, h, icon, toast, modal, overlay, fmtTime, sleep } from './ui.mjs';
 import { connectHost } from './host.mjs';
 import { createApi } from './api.mjs';
 import { DocEditor, MSG } from './editor.mjs';
+import { insertTable, insertImage } from './object-insertion.mjs';
 import { createReviewPanel, blockersNode } from './review.mjs';
 import { buildExampleDocx, EXAMPLE_TITLE } from './example-docx.mjs';
 import { meerkat, mascotAlert, sound, oyoy } from './mascot.mjs';
@@ -791,6 +792,8 @@ $('#toolbar').addEventListener('click', e => {
   if (!cmd || !ed) return;
   if (cmd === 'undo') ed.undo();
   else if (cmd === 'redo') ed.redo();
+  else if (cmd === 'table') void insertTable(ed);
+  else if (cmd === 'image') void insertImage(ed);
   else if (cmd === 'bullet' || cmd === 'numbered') ed.toggleList(cmd);
 });
 $('#style-select').addEventListener('change', e => {
