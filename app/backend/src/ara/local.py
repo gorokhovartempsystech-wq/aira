@@ -55,6 +55,9 @@ def create_local_app():
                 ) from None
             yield
         finally:
+            shutdown = getattr(app.state, "shutdown_local_model", None)
+            if shutdown is not None:
+                shutdown()
             engine.dispose()
 
     app.router.lifespan_context = lifespan

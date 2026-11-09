@@ -25,6 +25,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 "ara.workspace" = ["static/*.html", "static/*.css", "static/*.js"]
+"ara.ml_review" = ["static/*.html", "static/*.css", "static/*.js"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests/app", "tests/acceptance", "tests/runner", "tests/db", "tests/documents", "tests/analysis_contract", "tests/runs", "tests/worker", "tests/reviews", "tests/drafts", "tests/docx_package", "tests/docx_projection", "tests/docx_editing", "tests/docx_ranges", "tests/docx_session", "tests/docx_documents"]

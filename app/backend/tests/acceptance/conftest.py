@@ -39,7 +39,11 @@ def empty_pg_engine():
         )
     with admin:
         actual_data = admin.execute("SHOW data_directory").fetchone()[0]
-        assert Path(actual_data).resolve() == ROOT / ".runtime/postgres18/data"
+        expected_data = Path(
+            os.environ.get("ARA_TEST_PG_DATA_DIR", str(ROOT / ".runtime/postgres18/data"))
+        )
+        assert expected_data.is_absolute()
+        assert Path(actual_data).resolve() == expected_data.resolve()
         assert admin.execute("SHOW listen_addresses").fetchone() == ("",)
         # Cleanup is enabled only after CREATE succeeds; never adopt an existing database.
         admin.execute(

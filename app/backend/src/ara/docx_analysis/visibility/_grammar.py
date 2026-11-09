@@ -24,7 +24,16 @@ FORMATTING = {
     "lang",
     "rFonts",
 }
-PARAGRAPH = {"spacing", "ind", "jc", "outlineLvl", "keepNext", "keepLines", "pageBreakBefore"}
+PARAGRAPH = {
+    "widowControl",
+    "spacing",
+    "ind",
+    "jc",
+    "outlineLvl",
+    "keepNext",
+    "keepLines",
+    "pageBreakBefore",
+}
 UI_BOOL = {
     "autoRedefine",
     "hidden",

@@ -519,3 +519,15 @@ class DocxEditorCheckpoint(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("clock_timestamp()")
     )
+
+
+class LocalModelReview(Base):
+    __tablename__ = "local_model_reviews"
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    document_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("docx_documents.id"), nullable=False)
+    revision: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    source_sha256: Mapped[str] = mapped_column(Text, nullable=False)
+    result: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("clock_timestamp()")
+    )

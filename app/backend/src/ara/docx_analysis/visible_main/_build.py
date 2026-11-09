@@ -29,6 +29,7 @@ from ._models import (
 )
 from ._parse import preflight
 from ._reader import Reader, Refusal
+from ._template import inert_template_parts
 
 PROPERTIES = {
     "application/vnd.openxmlformats-package.core-properties+xml",
@@ -164,12 +165,15 @@ def build_visible_snapshot(
     except Refusal as exc:
         failure = exc.code
         paragraphs = runs = ()
+    inert_parts = inert_template_parts(data, root)
     for entry in source.entries:
         category, _ = _classify(entry.name, entry.content_type, source.main_part)
         if category == "main_body":
             status, code = "metadata", "main_part"
         elif category == "package_metadata" or entry.content_type in PROPERTIES:
             status, code = "metadata", "package_metadata"
+        elif entry.name in inert_parts:
+            status, code = "metadata", "known_inert_template_part"
         elif category == "comments":
             status, code = "excluded", "comments_policy"
         elif entry.content_type == MIME:

@@ -36,6 +36,7 @@ import onnxruntime as ort
 from tokenizers import Tokenizer
 
 from .lint import lint
+from .constraint_guard import verdict as constraint_verdict, equivalent as equivalent_bounds, explicit_identity
 
 VERSION = "0.1.0"
 STATUS_RU = {"active": "действует", "exception": "исключение", "deprecated": "архив",
@@ -106,7 +107,7 @@ def checkable(f):
     t = f["text"].strip()
     if len(t) < 30 or t.endswith(":") or BOILERPLATE.match(t) or NORMATIVE.search(t):
         return False
-    if (CONTRACT.search(t) and PARTY.search(t)) or CONTRACT.search(f.get("document", "")):
+    if (CONTRACT.search(t) and PARTY.search(t)) or (CONTRACT.search(f.get("document", "")) and PARTY.search(f.get("document", ""))):
         return False
     if _TABLE_ROW.search(t):                          # строка таблицы: «№ | наименование | ед. | кол-во»
         cells = [c.strip() for c in t.split("|")]
@@ -115,21 +116,6 @@ def checkable(f):
     return True
 
 
-def siblings(a, b):
-    """Соседние однотипные пункты (поля одного API, строки одного маппинга, элементы одного перечня): разные
-    значения у разных сущностей — это не противоречие, а структура. Один документ и тип, и либо общий
-    префикс ≥ 15 символов, либо оба коротких пункта (< 90 символов) без «должен/обязан» — элементы перечня."""
-    if a.get("document") != b.get("document") or a.get("type") != b.get("type"):
-        return False
-    n = 0
-    for x, y in zip(a["text"], b["text"]):
-        if x != y:
-            break
-        n += 1
-    if n >= 15:
-        return True
-    short = lambda t: len(t) < 90 and not re.search(r"(?i)\bдолж|\bобязан|\bнеобходимо|\bзапрещ|\bне\s+допуска", t)
-    return short(a["text"]) and short(b["text"])
 
 
 class Cancelled(Exception):
@@ -273,27 +259,33 @@ class Engine:
                     part = pairs[k:k + chunk]
                     prem = [active[a]["text"] for a, b, _ in part] + [active[b]["text"] for a, b, _ in part]
                     hyp = [active[b]["text"] for a, b, _ in part] + [active[a]["text"] for a, b, _ in part]
-                    pr = softmax(self.nli.run(prem, hyp))[:, ci]
+                    pr = softmax(self.nli.run(prem, hyp, bs=1))[:, ci]
                     done.append(np.minimum(pr[:len(part)], pr[len(part):]))   # противоречие симметрично
                 nli_p = np.concatenate(done) if done else np.zeros(0)
             step("questions", 0.97)
             for n, (a, b, s) in enumerate(pairs):
                 fa, fb = active[a], active[b]
-                if s >= DUP_YELLOW and "duplicate" not in disabled:
+                identical = fa['text'].strip() == fb['text'].strip()
+                numeric = (constraint_verdict(fa['text'], fb['text'])
+                           if fa.get('document') == fb.get('document') or explicit_identity(fa['text']) else None)
+                is_conflict = (not identical and numeric is not False and nli_p is not None and n < len(nli_p) and (numeric is True or nli_p[n] >= NLI_YELLOW)
+                               and "exception" not in (fa.get("status"), fb.get("status"))
+                               and "contradiction" not in disabled)
+                duplicate_allowed = identical or numeric is None or (numeric is False and equivalent_bounds(fa['text'], fb['text']))
+                if s >= DUP_YELLOW and "duplicate" not in disabled and not is_conflict and duplicate_allowed:
                     issues.append({"id": self._id("duplicate", fa["id"], fb["id"]), "type": "duplicate",
                                    "severity": "info", "confidence": round(s, 3), "light": "red" if s >= DUP_RED else "yellow",
                                    "fragment_id": fb["id"], "span": {"start": 0, "end": len(fb["text"]), "quote": fb["text"]},
                                    "related": {"fragment_id": fa["id"], "quote": fa["text"], "status": fa.get("status", "active")},
                                    "explanation": "Почти то же самое уже сказано в другом месте.", "rule": None,
                                    "suggestion": None, "question": "Оставить одно из двух требований или они о разном?"})
-                elif (nli_p is not None and n < len(nli_p) and nli_p[n] >= NLI_YELLOW and not siblings(fa, fb)
-                      and "exception" not in (fa.get("status"), fb.get("status"))):
-                    p = float(nli_p[n])
+                elif is_conflict:
+                    p = 1.0 if numeric is True else float(nli_p[n])
                     issues.append({"id": self._id("contradiction", fa["id"], fb["id"]), "type": "contradiction",
                                    "severity": "critical", "confidence": round(p, 3), "light": "red" if p >= NLI_RED else "yellow",
                                    "fragment_id": fb["id"], "span": {"start": 0, "end": len(fb["text"]), "quote": fb["text"]},
                                    "related": {"fragment_id": fa["id"], "quote": fa["text"], "status": fa.get("status", "active")},
-                                   "explanation": "Два действующих требования, похоже, нельзя выполнить одновременно.",
+                                   "explanation": ("Числовые ограничения одной величины не имеют общего допустимого значения." if numeric is True else "Два действующих требования, похоже, нельзя выполнить одновременно."),
                                    "rule": "ISO/IEC/IEEE 29148: непротиворечивость набора", "suggestion": None,
                                    "question": "Какое из двух правил действует?"})
         issues = [x for x in issues if x["type"] not in disabled and x["id"] not in set(dismissed)]

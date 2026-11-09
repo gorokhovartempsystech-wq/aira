@@ -1,0 +1,9 @@
+<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AIRA · Редактор требований</title><link rel="stylesheet" href="/editor/assets/editor.css"><script defer src="/editor/assets/editor.js"></script></head>
+<body class="open"><header class="appbar"><div class="hleft"><a class="logo" href="/editor"><span class="logomark">a</span>AIRA</a><span class="badge b-draft">Локальный редактор</span></div><span></span><div class="hright">Один документ · ручные исправления</div></header>
+<div class="crumbs"><a href="/workspace">Сохранённые документы</a><span>/</span><b>Редактор требований</b></div>
+<div class="layout"><main class="editor"><div class="wrap"><input id="title" class="ph-title" value="Новый документ" aria-label="Название документа">
+<div class="local-controls"><button class="btn sec" id="new">Новый</button><button class="btn sec" id="save">Сохранить DOCX</button><button class="btn sec" id="download">Скачать DOCX</button><label class="btn sec">Импорт DOCX<input type="file" id="import" accept=".docx" hidden></label></div>
+<p id="document-status" role="status">Текст сохраняется как локальный черновик в этом браузере.</p>
+<textarea id="text" class="editor-text" aria-label="Текст требований" placeholder="Введите или вставьте требования. Каждый абзац — с новой строки."></textarea>
+<p id="import-note" hidden>Импортированный DOCX открыт для проверки. Чтобы сохранить его оформление, правьте фрагменты через «Сохранённые документы». Здесь исходный файл не перезаписывается.</p>
+</div></main><aside class="panel"><div class="ptop"><div class="phead"><b>Анализ требований</b></div><div class="local-controls"><button id="check" class="btn pri">Проверить</button><button id="stop" class="btn sec" hidden>Остановить</button></div><p id="status" role="status">Проверка ещё не запускалась.</p></div><div id="findings" class="review-cards"></div></aside></div></body></html>
