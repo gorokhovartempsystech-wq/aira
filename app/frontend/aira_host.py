@@ -248,6 +248,8 @@ class DiagnosticLog:
         import json
 
         path, method = scope["path"], scope.get("method", "")
+        started = time.monotonic()
+        operation = method in {"POST", "PUT", "PATCH", "DELETE"} and not path.endswith("/working-content")
         analysis = "/analysis-" in path
         state = {"status": 0, "body": b""}
 
@@ -263,7 +265,7 @@ class DiagnosticLog:
             await self.app(scope, receive, capture)
         finally:
             status = state["status"]
-            if analysis or status >= 400:
+            if analysis or operation or status >= 400:
                 try:
                     data = json.loads(state["body"] or b"{}")
                 except ValueError:
@@ -278,7 +280,7 @@ class DiagnosticLog:
                         "code": data.get("code") if isinstance(data, dict) else None,
                         "run_status": run.get("status"), "run_error": run.get("error_code"),
                         "execution": run.get("execution_kind")}.items() if v}
-                    diag(f"[api] {method} {path} -> {status} {fields}")
+                    diag(f"[api] {method} {path} -> {status} {fields} duration_ms={round((time.monotonic() - started) * 1000)}")
 
 
 class SupervisorError(RuntimeError):

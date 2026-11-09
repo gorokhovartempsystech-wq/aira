@@ -1,3 +1,4 @@
+import { installPilotLog } from './pilot-log.mjs';
 import { createConnectedWorkspace } from '../../client/document-workspace.mjs';
 import { createConnectedImporter } from '../../client/docx-files.mjs';
 import { $, h, icon, toast, modal, overlay, fmtTime, sleep } from './ui.mjs';
@@ -710,6 +711,7 @@ function postDiag(kind, message) {
       body: JSON.stringify({ kind, message: String(message).slice(0, 800) }) }).catch(() => {});
   } catch { /* журнал не обязателен */ }
 }
+installPilotLog(document, postDiag);
 window.addEventListener('aira:alert', e => postDiag(e.detail.kind, e.detail.message));
 window.addEventListener('error', e => postDiag('js-error', `${e.message} @${(e.filename || '').split('/').pop()}:${e.lineno}`));
 window.addEventListener('unhandledrejection', e => postDiag('js-rejection', e.reason?.code || e.reason?.message || e.reason));
