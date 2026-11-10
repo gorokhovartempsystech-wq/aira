@@ -19,7 +19,7 @@ python app/frontend/packaging/updates/fetch_sdk.py macos /absolute/build/sparkle
 python app/frontend/packaging/updates/fetch_sdk.py windows /absolute/build/winsparkle
 ```
 
-Скрипт проверяет закреплённые SHA-256 официальных архивов перед распаковкой. Не коммитить SDK, модель, установщики или private key. Mac `build.py` принимает `--sparkle /absolute/build/sparkle`, `--version 0.2.4`, `--build 3`. Каждая следующая Mac-сборка получает строго больший целочисленный build. Windows `build.ps1` принимает `-WinSparkleDir C:\build\winsparkle\WinSparkle-0.9.4 -Version 0.2.4`.
+Скрипт проверяет закреплённые SHA-256 официальных архивов перед распаковкой. Не коммитить SDK, модель, установщики или private key. Mac `build.py` принимает `--sparkle /absolute/build/sparkle`, `--version 0.2.5`, `--build 4`. Каждая следующая Mac-сборка получает строго больший целочисленный build. Windows `build.ps1` принимает `-WinSparkleDir C:\build\winsparkle\WinSparkle-0.9.4 -Version 0.2.4`.
 
 `release-config.json` содержит только публичный ключ и HTTPS-адреса. Сервер лицензий встроен в Mac, ручной `license-origin.txt` в профиле больше не нужен. Windows-лицензирование не добавляется этим изменением.
 
@@ -37,7 +37,7 @@ python app/frontend/packaging/updates/prepare_keys.py --public-key-tool /absolut
 Последняя команда создаёт seed **только при отсутствии**, дописывает его в `~/secrets.env` с правами 0600 и выводит только public key. Для существующей установки не менять public key в config.
 
 ```sh
-python app/frontend/packaging/updates/make_appcast.py /absolute/releases/AIRA-0.2.4-apple-silicon.dmg --platform macos-arm64 --version 0.2.4 --build 3 --sign-update /absolute/build/sparkle/bin/sign_update --output /absolute/releases/updates
+python app/frontend/packaging/updates/make_appcast.py /absolute/releases/AIRA-0.2.5-apple-silicon.dmg --platform macos-arm64 --version 0.2.5 --build 4 --sign-update /absolute/build/sparkle/bin/sign_update --output /absolute/releases/updates
 ```
 
 Для Windows аналогично: `AIRA-Setup-0.2.4.exe`, `--platform windows-x64`. Сначала нужен нативный Windows-прогон. Непроверенный EXE в канал не публиковать.

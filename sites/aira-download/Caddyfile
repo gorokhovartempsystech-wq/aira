@@ -1,8 +1,8 @@
 {
-    default_sni 144.124.235.162
+    default_sni 51.250.81.70
 }
 
-https://144.124.235.162 {
+https://51.250.81.70 {
     tls {
         issuer acme https://acme-v02.api.letsencrypt.org/directory {
             profile shortlived

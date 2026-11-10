@@ -22,8 +22,8 @@ def main():
     parser.add_argument(
         "--sparkle", required=True, type=Path, help="Verified Sparkle 2.10.1 distribution"
     )
-    parser.add_argument("--version", default="0.2.4")
-    parser.add_argument("--build", type=int, default=3)
+    parser.add_argument("--version", default="0.2.5")
+    parser.add_argument("--build", type=int, default=4)
     args = parser.parse_args()
     if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", args.version) or args.build < 3:
         parser.error("invalid release version/build")
