@@ -520,7 +520,7 @@ export class DocEditor {
     if (!this.dirty.size || !this.projection) return false;
     if (this.composing) { this.scheduleFlush(300); return false; }
     await this.waitReady();
-    const edits = [], empties = [], sent = new Map();
+    const edits = [], cells = [], empties = [], sent = new Map();
     for (const key of [...this.dirty]) {
       const entry = this.byKey.get(key);
       if (!entry || !entry.el.isConnected) { this.dirty.delete(key); continue; }
@@ -531,11 +531,22 @@ export class DocEditor {
         this.revertParagraph(entry); toast(MSG.object, 'warn'); continue;
       }
       if (!before) { empties.push({ entry, text: now }); sent.set(key, now); continue; }
+      // A range edit's post-edit position can address only body paragraphs.
+      // Use the cell-aware selection and paste operations for text inside tables.
+      if (entry.top === null) {
+        cells.push({ entry, change: c });
+        sent.set(key, now);
+        continue;
+      }
       try { edits.push(this.rangeEdit(entry, c)); sent.set(key, now); }
       catch { this.revertParagraph(entry); toast(MSG.refused, 'warn'); }
     }
-    if (!edits.length && !empties.length) return false;
+    if (!edits.length && !cells.length && !empties.length) return false;
     if (edits.length) await this.editor.edit({ action: 'range_edit', value: edits, after: this.afterTarget(sent) });
+    for (const { entry, change } of cells) {
+      await this.capture(entry, change.start, change.end);
+      await this.editor.edit({ action: 'paste_text', value: change.after });
+    }
     for (const item of empties) {
       await this.capture(item.entry, 0, 0);
       await this.editor.edit({ action: 'insert_text', value: item.text });
