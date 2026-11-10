@@ -15,6 +15,26 @@ def run(*args):
     subprocess.run(args, check=True, stdin=subprocess.DEVNULL)
 
 
+def build_icon(source, work, destination):
+    iconset = work / "AIRA.iconset"
+    iconset.mkdir()
+    for points in (16, 32, 128, 256, 512):
+        for scale in (1, 2):
+            pixels = str(points * scale)
+            suffix = "@2x" if scale == 2 else ""
+            name = f"icon_{points}x{points}{suffix}.png"
+            run(
+                "/usr/bin/sips",
+                "--resampleHeightWidth",
+                pixels,
+                pixels,
+                str(source),
+                "--out",
+                str(iconset / name),
+            )
+    run("/usr/bin/iconutil", "-c", "icns", "-o", str(destination), str(iconset))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--payload", required=True, type=Path)
@@ -43,6 +63,7 @@ def main():
         "pgsql/bin/pg_ctl",
         "app/backend/ml_bundle/models/manifest.json",
         "app/frontend/static/index.html",
+        "app/frontend/static/logo.png",
     ):
         if not (source / relative).is_file():
             parser.error(f"missing payload entry: {relative}")
@@ -57,6 +78,11 @@ def main():
         payload = contents / "Resources/payload"
         payload.parent.mkdir()
         run("/usr/bin/ditto", str(source), str(payload))
+        build_icon(
+            payload / "app/frontend/static/logo.png",
+            work,
+            contents / "Resources/AIRA.icns",
+        )
         shutil.copy2(here / "serve.py", payload / "serve.py")
         (contents / "Resources/license-origin.txt").write_text(config["license_origin"] + "\n")
         (contents / "Frameworks").mkdir()
@@ -68,6 +94,7 @@ def main():
                     "CFBundleExecutable": "AIRA",
                     "CFBundleIdentifier": "org.aira.mac-pilot",
                     "CFBundleName": "AIRA",
+                    "CFBundleIconFile": "AIRA.icns",
                     "CFBundlePackageType": "APPL",
                     "CFBundleShortVersionString": args.version,
                     "CFBundleVersion": str(args.build),
