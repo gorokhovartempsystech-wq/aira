@@ -513,10 +513,14 @@ async function prepareToClose() {
 /* =========================================================
    Rendering of chrome (sidebar, top bar, toolbar)
    ========================================================= */
-let frame = 0;
+let renderPending = false;
 function scheduleRender() {
-  if (frame) return;
-  frame = requestAnimationFrame(() => { frame = 0; renderChrome(); review.render(); });
+  if (renderPending) return;
+  renderPending = true;
+  const render = () => { renderPending = false; renderChrome(); review.render(); };
+  // Native WebKit can suspend animation callbacks while handling a system sheet.
+  if (app.host?.native) setTimeout(render, 0);
+  else requestAnimationFrame(render);
 }
 
 function onWorkspaceState() {

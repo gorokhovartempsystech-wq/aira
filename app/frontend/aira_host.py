@@ -81,12 +81,12 @@ def init_database(engine):
         ledger.provision_new_database(engine, installation_id=INSTALL, expected_revision=fence.revision)
 
 
-def frontend_routes(app, port, *, dev=False, dev_pages=None, log_file=None):
+def frontend_routes(app, port, *, dev=False, dev_pages=None, log_file=None, token=None, native_only=False):
     from fastapi import Request
     from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, RedirectResponse
     from fastapi.staticfiles import StaticFiles
 
-    token = secrets.token_hex(32)
+    token = token if token is not None else secrets.token_hex(32)
     # Окну приложения (pywebview) запускатель передаёт это через мост, а не через /aira/connection.
     app.state.aira_connection = {"origin": f"http://127.0.0.1:{port}", "sessionToken": token}
 
@@ -122,6 +122,8 @@ def frontend_routes(app, port, *, dev=False, dev_pages=None, log_file=None):
 
     @app.get("/aira/connection", include_in_schema=False)
     def connection():
+        if native_only:
+            return JSONResponse({"code": "route_unavailable"}, status_code=404, headers=NO_STORE)
         # Нативная оболочка передаст это через доверенный мост, а не по HTTP.
         return JSONResponse({"origin": f"http://127.0.0.1:{port}", "sessionToken": token, "dev": dev},
                             headers=NO_STORE)
@@ -179,7 +181,8 @@ def licence_stub_routes(app):
 
 
 def build_app(*, database_url, runtime_root, port, analysis="model", initialize=True,
-              licence_stub=False, dev=False, dev_pages=None, on_ready=None, log_file=None):
+              licence_stub=False, dev=False, dev_pages=None, on_ready=None, log_file=None,
+              native_token=None):
     """Возвращает ASGI-приложение. Воркер анализа запускается и останавливается в lifespan."""
     from sqlalchemy import create_engine
 
@@ -202,7 +205,8 @@ def build_app(*, database_url, runtime_root, port, analysis="model", initialize=
     app = create_app(document_runtime=runtime, analysis_supervisor=supervisor, table_editor=True, field_editor=True)
     if licence_stub:
         licence_stub_routes(app)
-    frontend_routes(app, port, dev=dev, dev_pages=dev_pages, log_file=log_file)
+    frontend_routes(app, port, dev=dev, dev_pages=dev_pages, log_file=log_file,
+                    token=native_token, native_only=native_token is not None)
     previous = app.router.lifespan_context
 
     @asynccontextmanager
