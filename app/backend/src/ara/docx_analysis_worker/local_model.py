@@ -10,6 +10,7 @@ from pathlib import Path
 from ara.docx_analysis.storage_codec import ExecutionSpec
 from ara.docx_analysis.visible_word._models import PROFILE
 
+from .prototype import propose
 from .review_fixture import _fragments, _request_header
 from .wire import encode_message
 
@@ -38,6 +39,9 @@ def package_identity(model_dir, engine_dir):
             continue
         adapter.update(name.encode())
         adapter.update((runtime / name).read_bytes())
+    for path in sorted(Path(__file__).with_name("prototype").glob("*.py")):
+        adapter.update(path.name.encode())
+        adapter.update(path.read_bytes())
     return ExecutionSpec(
         "local_model",
         "0.1.0",
@@ -47,7 +51,7 @@ def package_identity(model_dir, engine_dir):
     )
 
 
-def adapt(raw):
+def adapt(raw, *, questions=()):
     require(
         type(raw) is dict
         and set(raw) == {"engine", "models", "issues", "questions", "checked", "seconds", "partial"}
@@ -75,7 +79,7 @@ def adapt(raw):
             pair_candidates_total=None,
             pair_candidates_completed=None,
         ),
-        standalone_questions=[],
+        standalone_questions=list(questions),
     )
     return json.dumps(result, ensure_ascii=False, allow_nan=False, separators=(",", ":")).encode()
 
@@ -115,7 +119,7 @@ def run(request, *, model_dir, engine_dir, emit, budget_seconds=285):
     send("stage", 2, stage="analyzing")
     raw = model.review(fragments, deadline=time.time() + max(0, deadline - time.monotonic()))
     print(json.dumps({"onnx_calls": calls}), file=sys.stderr, flush=True)
-    result = adapt(raw)
+    result = adapt(raw, questions=propose(fragments))
     require(time.monotonic() < deadline + 5)
     send(
         "result",

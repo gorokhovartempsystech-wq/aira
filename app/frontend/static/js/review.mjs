@@ -135,17 +135,21 @@ export function createReviewPanel({ body, rail, app }) {
       id: f.finding_id, type: f.type,
       ranges: [...ed.evidenceRanges(f.primary), ...(f.related ? ed.evidenceRanges(f.related) : [])],
     }));
+    for (const place of r.review.view.standalone_questions || []) {
+      items.push({ id: place.question_id, type: 'formulation',
+        ranges: place.evidence.flatMap(evidence => ed.evidenceRanges(evidence)) });
+    }
     ed.setHighlights(items, st(id).active);
   }
 
-  function select(id, findingId, scroll = true) {
+  function select(id, findingId, scroll = true, evidence = null) {
     st(id).active = findingId;
     const ed = app.editors.get(id);
     const r = app.workspace.client(id).review.status();
     highlights(id);
     if (scroll) {
       if (!r.canHighlight) toast('Текст изменён после проверки — подсветка отключена. Проверьте документ снова.', 'info');
-      else if (!ed.scrollToFinding(findingId)) toast('Фрагмент находится в части документа, которая здесь не показывается.', 'info');
+      else if (!(evidence ? ed.scrollToEvidence(evidence) : ed.scrollToFinding(findingId))) toast('Фрагмент находится в части документа, которая здесь не показывается.', 'info');
     }
     lastKey = null;
     app.render();
@@ -262,8 +266,18 @@ export function createReviewPanel({ body, rail, app }) {
     const stored = activeFilter(prefs);
     const filter = s.questionsOnly ? 'questions' : stored;
     const visible = v.findings;
-    const questions = [...v.questions.map(q => ({ id: q.question_id, text: q.text })),
-      ...(v.standalone_questions || []).map(q => ({ id: q.question_id, text: q.text, reason: q.reason, quote: q.evidence?.[0]?.quote }))];
+    const questions = v.questions.map(q => ({ id: q.question_id, text: q.text }));
+    const places = v.standalone_questions || [];
+    if (places.length) {
+      const list = h('div', { class: 'cards' });
+      for (const place of places) {
+        list.append(h('article', { class: 'card t-formulation', 'data-finding': place.question_id },
+          h('div', { class: 'card-top' }, h('span', { class: 'type' }, place.text)),
+          h('p', { class: 'why' }, place.reason),
+          ...place.evidence.map(evidence => evidenceQuote(id, place.question_id, evidence, null, r.canHighlight))));
+      }
+      wrap.append(h('div', { class: 'res-head' }, h('h3', {}, 'Места для проверки')), list);
+    }
 
     // Per-type counts come from an unfiltered view of this run (cached on this computer).
     let counts = readCounts(review.run.run_id);
@@ -338,11 +352,31 @@ export function createReviewPanel({ body, rail, app }) {
     return wrap;
   }
 
+  function evidenceQuote(id, findingId, e, label, canHighlight) {
+      if (!e?.quote) return null;
+      const jump = ev => {
+        ev.stopPropagation();
+        select(id, findingId, true, e);
+      };
+      return h('blockquote', {
+        class: canHighlight ? 'jump' : '',
+        title: canHighlight ? 'Показать в тексте' : null,
+        role: canHighlight ? 'button' : null,
+        tabindex: canHighlight ? '0' : null,
+        onclick: jump,
+        onkeydown: ev => {
+          if (canHighlight && (ev.key === 'Enter' || ev.key === ' ')) {
+            ev.preventDefault();
+            jump(ev);
+          }
+        },
+      }, label ? h('span', { class: 'lbl' }, label) : null, `«${e.quote}»`);
+  }
+
   function card(id, f, isHidden, canHighlight) {
     const client = app.workspace.client(id);
     const active = st(id).active === f.finding_id;
-    const quote = (e, label) => e?.quote ? h('blockquote', { class: canHighlight ? 'jump' : '', title: canHighlight ? 'Показать в тексте' : null,
-      onclick: ev => { ev.stopPropagation(); select(id, f.finding_id); } }, label ? h('span', { class: 'lbl' }, label) : null, `«${e.quote}»`) : null;
+    const quote = (evidence, label) => evidenceQuote(id, f.finding_id, evidence, label, canHighlight);
     return h('article', { class: `card t-${f.type}${active ? ' active' : ''}${isHidden ? ' is-hidden' : ''}`, 'data-finding': f.finding_id,
       onclick: () => select(id, f.finding_id) },
       h('div', { class: 'card-top' },
