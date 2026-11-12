@@ -34,6 +34,8 @@ RUNTIME, LOGS, STATE = DATA / "runtime", DATA / "logs", DATA / "state.json"   # 
 APP_PORT, PG_PORT = 47017, 47432          # постоянный адрес — чтобы браузер помнил настройки AIRA
 NO_WINDOW = 0x08000000
 MUTEX = "AIRA-Launcher"
+STARTUP_TIMEOUT = 300
+SHUTDOWN_TIMEOUT = 120
 
 
 # ---------- журнал: у pythonw нет консоли ----------
@@ -187,7 +189,9 @@ def stop_postgres():
 
 
 class LaunchError(Exception):
-    pass
+    def __init__(self, message, code=None):
+        super().__init__(message)
+        self.code = code
 
 
 # ---------- снятие блокировки после сбоя проверки ----------
@@ -218,6 +222,7 @@ class Server:
     def __init__(self):
         self.server = self.thread = self.url = self.connection = None
         self.license_client = None
+        self.application = None
         self.error = None
 
     def start(self, pg_port, say):
@@ -226,6 +231,9 @@ class Server:
         import uvicorn
 
         import aira_host
+
+        started_at = time.monotonic()
+        print("startup: preparing local application", flush=True)
 
         port = pick_port(APP_PORT)
         self.url = f"http://127.0.0.1:{port}/aira/"
@@ -242,6 +250,7 @@ class Server:
                                   on_ready=ready.set, log_file=LOGS / "aira.log", native_token=token.hex())
         self.connection = dict(app.state.aira_connection)
         protected = NativeApplication(app, self.license_client, origin=self.connection["origin"], token=token)
+        self.application = protected
         self.license_client.start()
         config = uvicorn.Config(protected, host="127.0.0.1", port=port, access_log=False, log_level="info")
         self.server = uvicorn.Server(config)
@@ -255,19 +264,31 @@ class Server:
 
         self.thread = threading.Thread(target=serve, name="aira-server", daemon=True)
         self.thread.start()
+        deadline = time.monotonic() + STARTUP_TIMEOUT
         while not self.server.started:
             if not self.thread.is_alive():
-                raise self.error or LaunchError("Сервер AIRA не запустился.")
+                code = protected.startup_error
+                print(f"startup: local server stopped, code={code}", flush=True)
+                raise LaunchError("Сервер AIRA не запустился.", code=code) from self.error
+            if time.monotonic() >= deadline:
+                self.server.should_exit = True
+                raise LaunchError("Сервер AIRA не запустился за 5 минут.")
             time.sleep(0.1)
+        print(f"startup: local server ready in {time.monotonic() - started_at:.1f} s", flush=True)
         STATE.write_text(json.dumps({"url": self.url, "pid": os.getpid()}), encoding="utf-8")
         return self.url
 
     def stop(self):
         if self.server and self.thread and self.thread.is_alive():
             self.server.should_exit = True
-            self.thread.join(timeout=60)
+            self.thread.join(timeout=SHUTDOWN_TIMEOUT)
             if self.thread.is_alive():
                 raise LaunchError("Завершение сервера AIRA ещё не подтверждено. База данных сохранена.")
+        if self.application is not None and (
+            self.application.shutdown_failed
+            or (self.application.startup_failed and self.application.startup_error is None)
+        ):
+            raise LaunchError("Завершение компонентов AIRA не подтверждено. Подробности — в журнале.")
         if self.license_client is not None:
             if not self.license_client.shutdown(timeout=5):
                 raise LaunchError("Проверка лицензии ещё завершается. Повторите закрытие AIRA.")
@@ -324,12 +345,14 @@ html,body{margin:0;height:100%;font:15px/1.5 "Segoe UI",system-ui,sans-serif;bac
 h1{margin:10px 0 6px;font-size:22px}#s{color:#475467;margin:0}
 .sp{width:28px;height:28px;border:3px solid #e4e7ec;border-top-color:#4f5bd5;border-radius:50%;margin:18px auto 0;animation:r 1s linear infinite}
 @keyframes r{to{transform:rotate(360deg)}}.err .sp{display:none}.err #s{color:#c2352b}
-button{margin-top:16px;font:inherit;padding:7px 16px;border-radius:9px;border:1px solid #cfd4dd;background:#fff;cursor:pointer;display:none}
-.err button{display:inline-block}
+#t{color:#98a2b3;font-size:13px;margin:10px 0 0}#h{color:#667085;font-size:13px;max-width:340px;margin:8px auto 0;display:none}
+button{margin-top:16px;font:inherit;font-size:13.5px;padding:6px 14px;border-radius:9px;border:1px solid #cfd4dd;background:#fff;cursor:pointer}
 </style></head><body><div class="box"><div class="card" id="c"><img src="LOGO" width="56" height="56" alt="">
-<h1>AIRA</h1><p id="s">Запуск…</p><div class="sp"></div>
+<h1>AIRA</h1><p id="s">Запуск…</p><div class="sp"></div><p id="t"></p>
+<p id="h">Первый запуск может занять несколько минут: создаётся база и антивирус проверяет файлы программы.</p>
 <button onclick="window.pywebview.api.open_logs()">Открыть журнал</button></div></div>
-<script>window.setStatus=(t,e)=>{document.getElementById('s').textContent=t;document.getElementById('c').className=e?'card err':'card';}</script>
+<script>window.setStatus=(t,e)=>{document.getElementById('s').textContent=t;document.getElementById('c').className=e?'card err':'card';if(e){clearInterval(window.__tick);document.getElementById('h').style.display='none';}};
+const t0=Date.now();window.__tick=setInterval(()=>{const s=Math.floor((Date.now()-t0)/1000);document.getElementById('t').textContent=Math.floor(s/60)+':'+String(s%60).padStart(2,'0');if(s>=45)document.getElementById('h').style.display='block';},1000);</script>
 </body></html>"""
 
 

@@ -40,8 +40,34 @@ class NativeApplication:
     def __init__(self, app, client, *, origin, token):
         self.app = app
         self.protected = LicensedApplication(app, client, origin=origin, session_token=token)
+        self.startup_error = None
+        self.startup_failed = self.shutdown_failed = False
+        self.started = False
 
     async def __call__(self, scope, receive, send):
+        if scope["type"] == "lifespan":
+
+            async def lifecycle_send(message):
+                kind = message.get("type")
+                if kind == "lifespan.startup.complete":
+                    self.started = True
+                elif kind == "lifespan.startup.failed":
+                    self.startup_failed = True
+                elif kind == "lifespan.shutdown.failed":
+                    self.shutdown_failed = True
+                await send(message)
+
+            try:
+                await self.protected(scope, receive, lifecycle_send)
+            except BaseException as error:
+                if self.started:
+                    self.shutdown_failed = True
+                else:
+                    self.startup_failed = True
+                    code = getattr(error, "code", None)
+                    self.startup_error = code if type(code) is str else None
+                raise
+            return
         path = scope.get("path", "")
         public = path in {"/aira", "/aira/"} or path.startswith(("/aira/assets/", "/aira/client/"))
         diagnostic = path in {"/aira/diagnostics/log", "/aira/diagnostics/client"}

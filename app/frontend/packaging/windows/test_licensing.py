@@ -357,3 +357,111 @@ def test_second_launch_does_not_open_browser_when_native_window_is_not_ready(lau
     launcher.STATE.write_text(json.dumps({"url": LOCAL + "/aira/"}))
     launcher.focus_running()
     assert not calls
+
+
+def wire_startup(world, launcher, monkeypatch, run):
+    import aira_licensed_app
+
+    import ara.desktop.access
+
+    world.inner.state = SimpleNamespace(
+        aira_connection={"origin": LOCAL, "sessionToken": world.token.hex()}
+    )
+
+    class FakeServer:
+        def __init__(self, app):
+            self.app = app
+            self.started = self.should_exit = False
+
+        def run(self):
+            run(self)
+
+    monkeypatch.setattr(sys, "path", list(sys.path))
+    monkeypatch.setattr(sys, "executable", sys.executable)
+    monkeypatch.setitem(
+        sys.modules, "aira_host", SimpleNamespace(build_app=lambda **kw: world.inner)
+    )
+    monkeypatch.setitem(
+        sys.modules, "uvicorn", SimpleNamespace(Config=lambda app, **kw: app, Server=FakeServer)
+    )
+    monkeypatch.setattr(aira_licensed_app, "create_license_client", lambda *args: world.client)
+    monkeypatch.setattr(ara.desktop.access, "new_session_token", lambda: world.token)
+    monkeypatch.setattr(launcher, "pick_port", lambda preferred: 8767)
+    return launcher.Server()
+
+
+def test_startup_system_exit_becomes_visible_error_with_recovery_code(world, launcher, monkeypatch):
+    def fail(server):
+        server.app.startup_failed = True
+        server.app.startup_error = "recovery_required"
+        raise SystemExit(3)
+
+    server = wire_startup(world, launcher, monkeypatch, fail)
+    try:
+        with pytest.raises(launcher.LaunchError) as error:
+            server.start(5432, lambda message: None)
+        assert error.value.code == "recovery_required"
+        assert isinstance(server.error, SystemExit)
+    finally:
+        server.stop()
+
+
+def test_startup_wait_is_bounded_and_retains_shutdown_path(world, launcher, monkeypatch):
+    def wait(server):
+        while not server.should_exit:
+            time.sleep(0.005)
+
+    monkeypatch.setattr(launcher, "STARTUP_TIMEOUT", 0)
+    server = wire_startup(world, launcher, monkeypatch, wait)
+    try:
+        with pytest.raises(launcher.LaunchError):
+            server.start(5432, lambda message: None)
+        assert server.server.should_exit is True
+    finally:
+        server.stop()
+    assert world.client.view().phase == "closed"
+
+
+@pytest.mark.parametrize("shutdown", [False, True])
+def test_lifespan_error_is_retained_without_failure_body_logging(world, shutdown):
+    class Failed(Exception):
+        code = "recovery_required"
+
+    async def inner(scope, receive, send):
+        if shutdown:
+            await send({"type": "lifespan.startup.complete"})
+        await send(
+            {
+                "type": "lifespan.shutdown.failed" if shutdown else "lifespan.startup.failed",
+                "message": "synthetic failure detail",
+            }
+        )
+        raise Failed()
+
+    async def receive():
+        return {"type": "lifespan.startup"}
+
+    async def send(message):
+        pass
+
+    app = NativeApplication(inner, world.client, origin=LOCAL, token=world.token)
+    with pytest.raises(Failed):
+        asyncio.run(app({"type": "lifespan"}, receive, send))
+    assert app.shutdown_failed is shutdown
+    if not shutdown:
+        assert app.startup_failed and app.startup_error == "recovery_required"
+
+
+@pytest.mark.parametrize("shutdown_failed", [True, False])
+def test_unconfirmed_lifespan_cleanup_does_not_stop_database(
+    launcher, monkeypatch, shutdown_failed
+):
+    server = launcher.Server()
+    server.application = SimpleNamespace(
+        shutdown_failed=shutdown_failed, startup_failed=not shutdown_failed, startup_error=None
+    )
+    calls = []
+    monkeypatch.setattr(launcher, "stop_postgres", lambda: calls.append("postgres"))
+    with pytest.raises(launcher.LaunchError):
+        launcher.shutdown_backend(server)
+    assert not calls
