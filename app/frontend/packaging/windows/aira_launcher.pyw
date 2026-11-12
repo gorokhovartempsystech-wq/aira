@@ -1,4 +1,4 @@
-"""AIRA для Windows (пилотная сборка): запускает локальную базу и сервер, открывает AIRA в браузере.
+"""AIRA для Windows: запускает локальную базу и сервер, открывает лицензированное окно AIRA.
 
 Раскладка установки ({app} — папка программы):
     {app}\\python\\            Python 3.12 с зависимостями бэкенда и модели
@@ -8,8 +8,8 @@
     {app}\\launcher\\          этот файл и иконка
 
 Данные пользователя: %LOCALAPPDATA%\\AIRA (база, рабочие файлы проверки, журналы).
-Лицензирования в пилотной сборке нет. Окно управления остаётся открытым, пока работает AIRA:
-«Выйти» штатно останавливает сервер и базу.
+Серверная лицензия обязательна при каждом запуске. Native WebView2 передаёт capability
+через мост; браузерный режим этой лицензированной поставки не поддерживается.
 """
 
 import ctypes
@@ -217,6 +217,7 @@ def clear_stuck_run(pg_port, run_id):
 class Server:
     def __init__(self):
         self.server = self.thread = self.url = self.connection = None
+        self.license_client = None
         self.error = None
 
     def start(self, pg_port, say):
@@ -231,11 +232,18 @@ class Server:
         analysis = "model" if (MODEL / "models" / "manifest.json").exists() else "fixture"
         say("Загружаем модель…" if analysis == "model" else "Запускаем сервер…")
         ready = threading.Event()
+        from aira_licensed_app import NativeApplication, create_license_client
+        from ara.desktop.access import new_session_token
+
+        token = new_session_token()
+        self.license_client = create_license_client(APP / "launcher" / "release-config.json", DATA / "license")
         app = aira_host.build_app(database_url=f"postgresql+psycopg://postgres@127.0.0.1:{pg_port}/aira",
                                   runtime_root=RUNTIME, port=port, analysis=analysis, initialize=True,
-                                  on_ready=ready.set, log_file=LOGS / "aira.log")
+                                  on_ready=ready.set, log_file=LOGS / "aira.log", native_token=token.hex())
         self.connection = dict(app.state.aira_connection)
-        config = uvicorn.Config(app, host="127.0.0.1", port=port, access_log=False, log_level="info")
+        protected = NativeApplication(app, self.license_client, origin=self.connection["origin"], token=token)
+        self.license_client.start()
+        config = uvicorn.Config(protected, host="127.0.0.1", port=port, access_log=False, log_level="info")
         self.server = uvicorn.Server(config)
 
         def serve():
@@ -258,6 +266,13 @@ class Server:
         if self.server and self.thread and self.thread.is_alive():
             self.server.should_exit = True
             self.thread.join(timeout=60)
+            if self.thread.is_alive():
+                raise LaunchError("Завершение сервера AIRA ещё не подтверждено. База данных сохранена.")
+        if self.license_client is not None:
+            if not self.license_client.shutdown(timeout=5):
+                raise LaunchError("Проверка лицензии ещё завершается. Повторите закрытие AIRA.")
+            self.license_client = None
+        self.connection = None
         try:
             STATE.unlink()
         except OSError:
@@ -277,6 +292,7 @@ def boot_backend(server, state, say, ask):
         if not ask("AIRA", "Прошлая проверка завершилась сбоем, и AIRA заблокировала новые проверки.\n\n"
                            "Снять блокировку? Документы и результаты не пострадают."):
             raise
+        server.stop()
         clear_stuck_run(state["pg"], run_id)
         server.__init__()
         return server.start(state["pg"], say)
@@ -286,7 +302,10 @@ def shutdown_backend(server):
     try:
         server.stop()
         stop_postgres()
-    finally:
+    except Exception:
+        print("AIRA shutdown incomplete", flush=True)
+        raise
+    else:
         print("AIRA stopped", flush=True)
 
 
@@ -320,8 +339,18 @@ class DesktopApi:
     def __init__(self, ctx):
         self._ctx = ctx
 
+    def _require_native_page(self):
+        from aira_licensed_app import trusted_page
+
+        if not trusted_page(self._ctx["window"].get_current_url(), self._ctx["server"].url):
+            raise LaunchError("Этот запрос недоступен вне окна AIRA.")
+
     def connection(self):
-        return self._ctx["server"].connection
+        self._require_native_page()
+        connection = self._ctx["server"].connection
+        if connection is None:
+            raise LaunchError("Сервер AIRA ещё не готов.")
+        return dict(connection)
 
     def app_version(self):
         return version()
@@ -330,6 +359,7 @@ class DesktopApi:
         os.startfile(str(LOGS))
 
     def open_docx(self):
+        self._require_native_page()
         import base64
 
         import webview
@@ -345,6 +375,7 @@ class DesktopApi:
         return {"name": path.name, "b64": base64.b64encode(data).decode("ascii")}
 
     def save_file(self, name, b64, kind="docx"):
+        self._require_native_page()
         import base64
 
         import webview
@@ -358,6 +389,7 @@ class DesktopApi:
         return {"saved": True, "path": str(path)}
 
     def close_result(self, ok):
+        self._require_native_page()
         # Ответ страницы на запрос закрытия: prepareToClose() дописал правки (ok) или пользователь остаётся.
         print(f"close requested, page answered: {ok}", flush=True)
         self._ctx["closing"] = False
@@ -405,6 +437,9 @@ def run_desktop(log):
     def on_closing():
         server = ctx["server"]
         if ctx["allow_close"] or not server.url:
+            return True
+        from aira_licensed_app import trusted_page
+        if not trusted_page(window.get_current_url(), server.url):
             return True
         if not ctx["closing"]:
             ctx["closing"] = True
@@ -571,23 +606,21 @@ def main():
             return
     except Exception as error:
         print("Update check unavailable:", type(error).__name__, flush=True)
-    mode = "browser" if os.environ.get("AIRA_BROWSER_MODE") or "--browser" in sys.argv else "desktop"
-    if mode == "desktop":
-        try:
-            import webview  # noqa: F401
-        except Exception:
-            traceback.print_exc()
-            mode = "browser"
-    print("ui mode:", mode, flush=True)
-    if mode == "desktop":
-        try:
-            run_desktop(log)
-            return
-        except Exception:
-            # Нет WebView2 или окно не создалось: продолжаем в браузере.
-            traceback.print_exc()
-            print("desktop window failed, falling back to browser mode", flush=True)
-    run_browser(log)
+    try:
+        if os.environ.get("AIRA_BROWSER_MODE") or "--browser" in sys.argv:
+            raise LaunchError("Для этой версии AIRA нужен Microsoft Edge WebView2 Runtime. "
+                              "Лицензированное приложение работает в собственном окне.")
+        import webview  # noqa: F401
+
+        print("ui mode: licensed desktop", flush=True)
+        run_desktop(log)
+    except Exception as error:
+        traceback.print_exc()
+        message = str(error) if isinstance(error, LaunchError) else (
+            "Не удалось открыть окно AIRA. Проверьте наличие Microsoft Edge WebView2 Runtime."
+        )
+        ctypes.windll.user32.MessageBoxW(None, message + "\nПодробности — в журнале AIRA.", "AIRA", 0x10)
+        raise SystemExit(1) from None
 
 
 if __name__ == "__main__":
