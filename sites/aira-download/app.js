@@ -11,18 +11,35 @@ const messages = {
     eyebrow: "Знакомьтесь, AIRA",
     title: "От идеи к ясному требованию.",
     description: "Мы создаём настольный редактор, который помогает находить неоднозначности в требованиях. Вы запускаете проверку, разбираете замечания и сами решаете, что изменить.",
-    details: ["Пилоты Windows и macOS включают локальную модель и редактор DOCX.", "При первом запуске AIRA на Mac введите выданный ключ активации. Адрес сервера уже встроен."],
+    details: ["Модель и редактор DOCX уже включены в установщик.", "Проверка требований выполняется на вашем компьютере."],
+  },
+  macInstall: {
+    eyebrow: "Пилотная версия для Mac",
+    title: "Как открыть AIRA.",
+    description: "Эта сборка пока не подписана сертификатом разработчика и не прошла проверку Apple. Поэтому macOS может заблокировать первое открытие.",
+    details: ["Скачивайте установщик с этого сайта. Модель проверяет требования локально на вашем компьютере."],
+    steps: [
+      "Откройте скачанный DMG и перенесите AIRA в папку «Программы».",
+      "Запустите AIRA из «Программ». Если появится предупреждение Apple, нажмите «Готово».",
+      "Откройте  → «Системные настройки» → «Конфиденциальность и безопасность».",
+      "Прокрутите до раздела «Безопасность». Рядом с сообщением об AIRA нажмите «Всё равно открыть».",
+      "Подтвердите запуск паролем Mac или Touch ID и нажмите «Открыть».",
+    ],
+    afterSteps: "Если кнопки нет, снова запустите AIRA и вернитесь в настройки. Разрешайте запуск только для сборки, которую вы скачали с нашего сайта и решили использовать.",
+    helpUrl: "https://support.apple.com/ru-ru/102445",
   },
   requirements: {
     eyebrow: "Перед установкой",
-    title: "Несколько важных деталей.",
-    description: "Пилот Windows работает на Windows 10/11 x64. Пилот macOS предназначен для Mac с Apple Silicon.",
+    title: "Системные требования.",
+    description: "Windows 10/11, 64 бита (x64), или macOS 14 и новее на Mac с чипом Apple Silicon (M1 и новее).",
     details: [
-      "Обе сборки скачиваются с сервера AIRA, вход в GitHub не нужен. Windows 0.2.0 — пилот без лицензирования и автообновления.",
+      "Модель включена в установщик и проверяет требования локально. Отдельно устанавливать Python и базу данных не нужно.",
       "На Mac откройте скачанный образ и перенесите AIRA в «Программы». Если AIRA уже установлена, закройте её перед заменой.",
-      "На Mac при первом запуске введите выданный ключ. Для активации и последующих запусков нужен интернет.",
+      "На Mac ключ вводится один раз, при активации. При следующих запусках лицензия проверяется автоматически через интернет; повторно вводить действующий ключ не нужно.",
       "Mac 0.2.6 проверяет обновления и загружает их автоматически. Установка завершается после сохранения правок и закрытия AIRA. Версии 0.2.4 и ниже нужно один раз заменить вручную из-за переезда сервера.",
-      "Сборки пока без подписи издателя Apple/Microsoft. Версии для Intel Mac и Windows ARM не опубликованы.",
+      "Windows 0.2.0 пока обновляется вручную; активация по ключу в этой сборке ещё не подключена.",
+      "У Mac-сборки пока нет подписи Developer ID и проверки Apple, поэтому macOS может заблокировать первое открытие. Это ограничение текущей сборки; автоматическое обновление его не устраняет.",
+      "Сборки для Intel Mac и Windows ARM не опубликованы. Минимальный объём оперативной памяти пока не установлен испытаниями.",
     ],
   },
 };
@@ -38,11 +55,40 @@ function showInfo(key) {
     paragraph.textContent = text;
     return paragraph;
   }));
+  if (message.steps) {
+    const list = document.createElement("ol");
+    list.className = "install-steps";
+    list.replaceChildren(...message.steps.map((text) => {
+      const item = document.createElement("li");
+      item.textContent = text;
+      return item;
+    }));
+    details.append(list);
+  }
+  if (message.afterSteps) {
+    const note = document.createElement("p");
+    note.textContent = message.afterSteps;
+    details.append(note);
+  }
+  if (message.helpUrl) {
+    const paragraph = document.createElement("p");
+    const link = document.createElement("a");
+    link.href = message.helpUrl;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    link.textContent = "Официальная инструкция Apple";
+    paragraph.append(link);
+    details.append(paragraph);
+  }
   dialog.showModal();
 }
 
 document.querySelectorAll("[data-dialog]").forEach((button) => {
   button.addEventListener("click", () => showInfo(button.dataset.dialog));
+});
+// Keep the installer link native: show help without cancelling the download.
+document.querySelector(".mac-button").addEventListener("click", (event) => {
+  if (event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) showInfo("macInstall");
 });
 document.querySelector(".dialog-close").addEventListener("click", () => dialog.close());
 document.querySelector(".dialog-done").addEventListener("click", () => dialog.close());
@@ -80,3 +126,4 @@ document.documentElement.addEventListener("pointerleave", () => {
   artwork.style.setProperty("--pointer-x", "0px");
   artwork.style.setProperty("--pointer-y", "0px");
 });
+
