@@ -3,6 +3,7 @@
 
 import { h, icon, toast, fmtTime, fmtClock, plural } from './ui.mjs';
 import { meerkat } from './mascot.mjs';
+import { reviewCounts, standaloneQuestions } from './review-data.mjs';
 
 export const TYPES = [
   ['formulation', 'Формулировки', 'Формулировка'],
@@ -55,7 +56,7 @@ export function blockersNode(blockers) {
 const reason = (code, fallback) => ERRORS[code] || (code ? `${fallback} Код причины: ${code}.` : fallback);
 const RUNNING = new Set(['saving', 'admitting', 'waiting', 'poll_error']);
 
-const countsKey = run => `aira.counts.${run}`;
+const countsKey = run => `aira.counts.v2.${run}`;
 function readCounts(run) { try { return JSON.parse(localStorage.getItem(countsKey(run))); } catch { return null; } }
 function writeCounts(run, c) { try { localStorage.setItem(countsKey(run), JSON.stringify(c)); } catch { /* optional */ } }
 
@@ -186,7 +187,7 @@ export function createReviewPanel({ body, rail, app }) {
   }
 
   function renderRail(a, r) {
-    const n = r.review ? r.review.view.findings.filter(f => !r.review.view.hidden_finding_ids.includes(f.finding_id)).length : null;
+    const n = r.review ? reviewCounts(r.review.view, TYPE_IDS).all : null;
     rail.replaceChildren(
       h('button', { class: 'rail-btn', title: 'Открыть панель проверки', onclick: () => app.setDrawer(true) }, icon('chevron-left')),
       h('button', { class: 'rail-btn', title: 'Замечания', onclick: () => app.setDrawer(true) }, icon('spark'),
@@ -267,24 +268,12 @@ export function createReviewPanel({ body, rail, app }) {
     const filter = s.questionsOnly ? 'questions' : stored;
     const visible = v.findings;
     const questions = v.questions.map(q => ({ id: q.question_id, text: q.text }));
-    const places = v.standalone_questions || [];
-    if (places.length) {
-      const list = h('div', { class: 'cards' });
-      for (const place of places) {
-        list.append(h('article', { class: 'card t-formulation', 'data-finding': place.question_id },
-          h('div', { class: 'card-top' }, h('span', { class: 'type' }, place.text)),
-          h('p', { class: 'why' }, place.reason),
-          ...place.evidence.map(evidence => evidenceQuote(id, place.question_id, evidence, null, r.canHighlight))));
-      }
-      wrap.append(h('div', { class: 'res-head' }, h('h3', {}, 'Места для проверки')), list);
-    }
+    const places = standaloneQuestions(v, filter, prefs);
 
     // Per-type counts come from an unfiltered view of this run (cached on this computer).
     let counts = readCounts(review.run.run_id);
     if (stored === 'all') {
-      counts = { questions: questions.length };
-      for (const t of TYPE_IDS) counts[t] = visible.filter(f => f.type === t && !hidden.has(f.finding_id)).length;
-      counts.all = TYPE_IDS.reduce((n, t) => n + counts[t], 0);
+      counts = reviewCounts(v, TYPE_IDS);
       writeCounts(review.run.run_id, counts);
     }
 
@@ -322,6 +311,18 @@ export function createReviewPanel({ body, rail, app }) {
       chip('questions', 'Вопросы', counts?.questions ?? null, 'question')));
 
     const list = h('div', { class: 'cards' });
+    const listOfResults = list;
+    if (places.length) {
+      const list = h('div', { class: 'cards' });
+      for (const place of places) {
+        list.append(h('article', { class: 'card question', 'data-finding': place.question_id },
+          h('div', { class: 'card-top' }, h('span', { class: 'type' }, place.text)),
+          h('p', { class: 'why' }, place.reason),
+          ...place.evidence.map(evidence => evidenceQuote(id, place.question_id, evidence, null, r.canHighlight))));
+      }
+      listOfResults.append(h('div', { class: 'res-head' }, h('h3', {}, 'Места для проверки')), list);
+    }
+
     if (filter !== 'questions') {
       for (const f of visible) list.append(card(id, f, hidden.has(f.finding_id), r.canHighlight));
     }
@@ -332,7 +333,7 @@ export function createReviewPanel({ body, rail, app }) {
         q.quote ? h('blockquote', {}, `«${q.quote}»`) : null));
     }
     if (!list.children.length) {
-      if (v.no_findings && !questions.length) {
+      if (v.no_findings && !questions.length && !places.length) {
         list.append(h('div', { class: 'empty success' }, meerkat({ mood: 'happy', size: 64 }), h('strong', {}, 'Замечаний нет'),
           'Модель не нашла проблем в этой версии. Это подсказка, а не доказательство полноты требований.'));
       } else {

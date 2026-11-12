@@ -1,8 +1,8 @@
 """Find a shared boundary that assigns different counts within one stated scale."""
+
 import re
 
 from .compose_verification_slots import compact, references
-
 
 BAND = re.compile(
     r"\bот\s+(?P<low>\d{1,6})\s+до\s+(?P<high>\d{1,6})"
@@ -28,16 +28,31 @@ def propose(fragments):
         text = compact(fragment["text"]).casefold()
         bands = list(BAND.finditer(text))
         for first, second in zip(bands, bands[1:]):
-            if not SEPARATOR.fullmatch(text[first.end():second.start()]):
+            if not SEPARATOR.fullmatch(text[first.end() : second.start()]):
                 continue
             boundary = first["high"]
             if not (int(first["low"]) < int(boundary) == int(second["low"]) < int(second["high"])):
                 continue
             if first["unit"] and second["unit"] and first["unit"] != second["unit"]:
                 continue
-            if int(first["count"]) == int(second["count"]) or not same_labels(first["label"].split(), second["label"].split()):
+            if int(first["count"]) == int(second["count"]) or not same_labels(
+                first["label"].split(), second["label"].split()
+            ):
                 continue
-            reason = (f"Граница {boundary} указана в двух соседних диапазонах с разными значениями "
-                      f"({first['count']} и {second['count']}). Сверьте, какое значение действует на границе.")
-            yield {"slot": "range_boundary", "text": "Разные значения на общей границе диапазонов",
-                   "reason": reason, "references": references(fragment)}
+            reason = (
+                "Граница "
+                f"{boundary}"
+                " указана в двух соседних диапазонах"
+                " с разными значениями ("
+                f"{first['count']}"
+                " и "
+                f"{second['count']}"
+                "). Сверьте, какое значение действуе"
+                "т на границе."
+            )
+            yield {
+                "slot": "range_boundary",
+                "text": "Разные значения на общей границе диапазонов",
+                "reason": reason,
+                "references": references(fragment),
+            }
