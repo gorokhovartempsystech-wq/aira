@@ -35,7 +35,7 @@ APP_PORT, PG_PORT = 47017, 47432          # постоянный адрес — 
 NO_WINDOW = 0x08000000
 MUTEX = "AIRA-Launcher"
 STARTUP_TIMEOUT = 300
-SHUTDOWN_TIMEOUT = 120
+SHUTDOWN_TIMEOUT = 150
 
 
 # ---------- журнал: у pythonw нет консоли ----------
@@ -247,7 +247,8 @@ class Server:
         self.license_client = create_license_client(APP / "launcher" / "release-config.json", DATA / "license")
         app = aira_host.build_app(database_url=f"postgresql+psycopg://postgres@127.0.0.1:{pg_port}/aira",
                                   runtime_root=RUNTIME, port=port, analysis=analysis, initialize=True,
-                                  on_ready=ready.set, log_file=LOGS / "aira.log", native_token=token.hex())
+                                  on_ready=ready.set, log_file=LOGS / "aira.log", native_token=token.hex(),
+                                  startup_timeout=120, shutdown_timeout=120)
         self.connection = dict(app.state.aira_connection)
         protected = NativeApplication(app, self.license_client, origin=self.connection["origin"], token=token)
         self.application = protected

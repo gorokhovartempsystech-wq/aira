@@ -261,6 +261,7 @@ def test_server_wires_native_capability_and_drains_license(world, launcher, monk
 
     def build_app(**kwargs):
         token_seen.append(kwargs["native_token"])
+        assert kwargs["startup_timeout"] == kwargs["shutdown_timeout"] == 120
         return world.inner
 
     class FakeServer:
@@ -465,3 +466,93 @@ def test_unconfirmed_lifespan_cleanup_does_not_stop_database(
     with pytest.raises(launcher.LaunchError):
         launcher.shutdown_backend(server)
     assert not calls
+
+
+def load_frontend_host():
+    spec = importlib.util.spec_from_file_location(
+        "aira_windows_lifecycle_host", HERE.parents[1] / "aira_host.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"startup_timeout": float("nan")},
+        {"shutdown_timeout": float("nan")},
+        {"startup_timeout": float("inf")},
+        {"shutdown_timeout": 121},
+        {"startup_timeout": True},
+        {"shutdown_timeout": 0},
+        {"startup_timeout": -1},
+    ],
+)
+def test_invalid_lifecycle_budget_is_rejected_before_database_access(changes):
+    host = load_frontend_host()
+    with pytest.raises(ValueError, match="lifecycle timeout"):
+        host.build_app(
+            database_url="not-a-database", runtime_root=Path("unused"), port=8767, **changes
+        )
+
+
+def test_windows_preserves_two_minute_supervisor_start_and_cleanup_budget(monkeypatch, tmp_path):
+    import anyio
+    import sqlalchemy
+    from fastapi import FastAPI
+
+    import ara.app
+    import ara.documents.runtime
+    import ara.docx_analysis_worker.supervisor.word_fixture
+
+    host = load_frontend_host()
+    clock = {"value": 0, "stop_at": None, "disposed": False}
+
+    class Supervisor:
+        def start(self):
+            pass
+
+        def view(self):
+            return SimpleNamespace(
+                phase="ready" if clock["value"] >= 80 else "starting", error_code=None
+            )
+
+        def shutdown(self, timeout):
+            if clock["stop_at"] is None:
+                clock["stop_at"] = clock["value"]
+            clock["value"] += 20
+            return clock["value"] - clock["stop_at"] >= 80
+
+    async def sleep(seconds):
+        clock["value"] += 20
+
+    monkeypatch.setattr(host, "time", SimpleNamespace(monotonic=lambda: clock["value"]))
+    monkeypatch.setattr(host, "private_root", lambda path: path)
+    monkeypatch.setattr(host, "frontend_routes", lambda *args, **kwargs: None)
+    monkeypatch.setattr(anyio, "sleep", sleep)
+    engine = SimpleNamespace(dispose=lambda: clock.update(disposed=True))
+    monkeypatch.setattr(sqlalchemy, "create_engine", lambda *args, **kwargs: engine)
+    monkeypatch.setattr(ara.documents.runtime, "DocumentRuntime", lambda **kwargs: object())
+    monkeypatch.setattr(ara.app, "create_app", lambda **kwargs: FastAPI())
+    monkeypatch.setattr(
+        ara.docx_analysis_worker.supervisor.word_fixture,
+        "create_word_fixture_supervisor",
+        lambda **kwargs: Supervisor(),
+    )
+    app = host.build_app(
+        database_url="postgresql+psycopg://fixture@127.0.0.1/aira",
+        runtime_root=tmp_path,
+        port=8767,
+        analysis="fixture",
+        initialize=False,
+        startup_timeout=120,
+        shutdown_timeout=120,
+    )
+
+    async def cycle():
+        async with app.router.lifespan_context(app):
+            assert clock["value"] == 80
+
+    asyncio.run(cycle())
+    assert clock["disposed"] and clock["value"] == 160

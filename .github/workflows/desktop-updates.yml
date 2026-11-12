@@ -4,12 +4,20 @@ on:
   pull_request:
     paths:
       - "app/frontend/packaging/**"
+      - "app/frontend/aira_host.py"
+      - "app/backend/src/ara/licensing/**"
+      - "app/backend/src/ara/desktop/access/**"
+      - "app/backend/requirements.lock"
       - "sites/aira-download/**"
       - ".github/workflows/desktop-updates.yml"
   push:
     branches: [main]
     paths:
       - "app/frontend/packaging/**"
+      - "app/frontend/aira_host.py"
+      - "app/backend/src/ara/licensing/**"
+      - "app/backend/src/ara/desktop/access/**"
+      - "app/backend/requirements.lock"
       - ".github/workflows/desktop-updates.yml"
 
 permissions:

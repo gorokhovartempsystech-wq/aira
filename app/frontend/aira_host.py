@@ -182,8 +182,11 @@ def licence_stub_routes(app):
 
 def build_app(*, database_url, runtime_root, port, analysis="model", initialize=True,
               licence_stub=False, dev=False, dev_pages=None, on_ready=None, log_file=None,
-              native_token=None):
+              native_token=None, startup_timeout=60, shutdown_timeout=30):
     """Возвращает ASGI-приложение. Воркер анализа запускается и останавливается в lifespan."""
+    for timeout, limit in ((startup_timeout, 300), (shutdown_timeout, 120)):
+        if type(timeout) not in (int, float) or not 0 < timeout <= limit:
+            raise ValueError("Invalid supervisor lifecycle timeout")
     from sqlalchemy import create_engine
 
     from ara.app import create_app
@@ -215,7 +218,7 @@ def build_app(*, database_url, runtime_root, port, analysis="model", initialize=
 
         supervisor.start()
         try:
-            deadline = time.monotonic() + 60
+            deadline = time.monotonic() + startup_timeout
             while supervisor.view().phase != "ready":
                 view = supervisor.view()
                 if view.error_code or time.monotonic() > deadline:
@@ -226,7 +229,7 @@ def build_app(*, database_url, runtime_root, port, analysis="model", initialize=
             async with previous(application):
                 yield
         finally:
-            deadline = time.monotonic() + 30
+            deadline = time.monotonic() + shutdown_timeout
             while not supervisor.shutdown(timeout=0.1):
                 if time.monotonic() > deadline:
                     raise RuntimeError("Analysis supervisor cleanup not confirmed")
