@@ -13,6 +13,21 @@ const messages = {
     description: "Мы создаём настольный редактор, который помогает находить неоднозначности в требованиях. Вы запускаете проверку, разбираете замечания и сами решаете, что изменить.",
     details: ["Модель и редактор DOCX уже включены в установщик.", "Проверка требований выполняется на вашем компьютере."],
   },
+  macInstall: {
+    eyebrow: "Пилотная версия для Mac",
+    title: "Как открыть AIRA.",
+    description: "Эта сборка пока не подписана сертификатом разработчика и не прошла проверку Apple. Поэтому macOS может заблокировать первое открытие.",
+    details: ["Скачивайте установщик с этого сайта. Модель проверяет требования локально на вашем компьютере."],
+    steps: [
+      "Откройте скачанный DMG и перенесите AIRA в папку «Программы».",
+      "Запустите AIRA из «Программ». Если появится предупреждение Apple, нажмите «Готово».",
+      "Откройте  → «Системные настройки» → «Конфиденциальность и безопасность».",
+      "Прокрутите до раздела «Безопасность». Рядом с сообщением об AIRA нажмите «Всё равно открыть».",
+      "Подтвердите запуск паролем Mac или Touch ID и нажмите «Открыть».",
+    ],
+    afterSteps: "Если кнопки нет, снова запустите AIRA и вернитесь в настройки. Разрешайте запуск только для сборки, которую вы скачали с нашего сайта и решили использовать.",
+    helpUrl: "https://support.apple.com/ru-ru/102445",
+  },
   requirements: {
     eyebrow: "Перед установкой",
     title: "Системные требования.",
@@ -40,11 +55,40 @@ function showInfo(key) {
     paragraph.textContent = text;
     return paragraph;
   }));
+  if (message.steps) {
+    const list = document.createElement("ol");
+    list.className = "install-steps";
+    list.replaceChildren(...message.steps.map((text) => {
+      const item = document.createElement("li");
+      item.textContent = text;
+      return item;
+    }));
+    details.append(list);
+  }
+  if (message.afterSteps) {
+    const note = document.createElement("p");
+    note.textContent = message.afterSteps;
+    details.append(note);
+  }
+  if (message.helpUrl) {
+    const paragraph = document.createElement("p");
+    const link = document.createElement("a");
+    link.href = message.helpUrl;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    link.textContent = "Официальная инструкция Apple";
+    paragraph.append(link);
+    details.append(paragraph);
+  }
   dialog.showModal();
 }
 
 document.querySelectorAll("[data-dialog]").forEach((button) => {
   button.addEventListener("click", () => showInfo(button.dataset.dialog));
+});
+// Keep the installer link native: show help without cancelling the download.
+document.querySelector(".mac-button").addEventListener("click", (event) => {
+  if (event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) showInfo("macInstall");
 });
 document.querySelector(".dialog-close").addEventListener("click", () => dialog.close());
 document.querySelector(".dialog-done").addEventListener("click", () => dialog.close());
