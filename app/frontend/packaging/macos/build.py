@@ -103,7 +103,7 @@ def main():
                     "SUEnableAutomaticChecks": True,
                     "SUAutomaticallyUpdate": True,
                     "SUEnableSystemProfiling": False,
-                    "LSMinimumSystemVersion": "13.0",
+                    "LSMinimumSystemVersion": "14.0",
                     "NSHighResolutionCapable": True,
                     "NSAppTransportSecurity": {
                         "NSAllowsLocalNetworking": True,
@@ -118,7 +118,7 @@ def main():
             "/usr/bin/xcrun",
             "swiftc",
             "-target",
-            "arm64-apple-macos13.0",
+            "arm64-apple-macos14.0",
             "-module-cache-path",
             str(work / "module-cache"),
             "-O",
@@ -154,3 +154,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

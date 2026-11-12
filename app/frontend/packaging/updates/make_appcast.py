@@ -42,7 +42,7 @@ def appcast(*, platform, version, build, url, size, signature):
         f"{{{SPARKLE}}}edSignature": signature,
     }
     if platform == "macos-arm64":
-        ET.SubElement(item, f"{{{SPARKLE}}}minimumSystemVersion").text = "13.0"
+        ET.SubElement(item, f"{{{SPARKLE}}}minimumSystemVersion").text = "14.0"
     else:
         attributes[f"{{{SPARKLE}}}os"] = "windows-x64"
         # Inno uses its existing AppId/install directory and preserves LOCALAPPDATA.
@@ -118,3 +118,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
