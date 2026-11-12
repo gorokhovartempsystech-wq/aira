@@ -4,12 +4,20 @@ on:
   pull_request:
     paths:
       - "app/frontend/packaging/**"
+      - "app/frontend/aira_host.py"
+      - "app/backend/src/ara/licensing/**"
+      - "app/backend/src/ara/desktop/access/**"
+      - "app/backend/requirements.lock"
       - "sites/aira-download/**"
       - ".github/workflows/desktop-updates.yml"
   push:
     branches: [main]
     paths:
       - "app/frontend/packaging/**"
+      - "app/frontend/aira_host.py"
+      - "app/backend/src/ara/licensing/**"
+      - "app/backend/src/ara/desktop/access/**"
+      - "app/backend/requirements.lock"
       - ".github/workflows/desktop-updates.yml"
 
 permissions:
@@ -46,3 +54,19 @@ jobs:
       - name: Native Windows DLL contract (no installer)
         if: runner.os == 'Windows'
         run: python app/frontend/packaging/updates/check_windows_sdk.py "$env:RUNNER_TEMP/winsparkle/WinSparkle-0.9.4"
+
+  windows-license:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-26, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r app/backend/requirements.lock
+      - name: Portable Windows licensing and shutdown contract
+        run: python -m pytest -q app/frontend/packaging/windows/test_licensing.py

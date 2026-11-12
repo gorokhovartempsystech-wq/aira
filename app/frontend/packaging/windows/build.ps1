@@ -10,7 +10,7 @@ param(
   [string]$PgDir = "$env:USERPROFILE\AIRA-dev\pgsql",
   [string]$Python = "$env:LOCALAPPDATA\Programs\Python\Python312",
   [string]$Out = "$env:USERPROFILE\AIRA-dev\build",
-  [string]$Version = '0.2.4',
+  [string]$Version = '0.2.7',
   [Parameter(Mandatory=$true)][string]$WinSparkleDir,
   [string]$Iscc = "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe",
   [switch]$NoModel,
@@ -63,6 +63,7 @@ Copy-Item (Join-Path $repo 'app\frontend\aira_host.py') "$stage\app\frontend\air
 New-Item -ItemType Directory -Force "$stage\launcher" | Out-Null
 Copy-Item (Join-Path $here 'aira_launcher.pyw') "$stage\launcher\aira_launcher.pyw"
 Copy-Item (Join-Path $here 'aira_updates.py') "$stage\launcher\aira_updates.py"
+Copy-Item (Join-Path $here 'aira_licensed_app.py') "$stage\launcher\aira_licensed_app.py"
 Copy-Item (Join-Path $here '..\updates\release-config.json') "$stage\launcher\release-config.json"
 Copy-Item (Join-Path $WinSparkleDir 'x64\Release\WinSparkle.dll') "$stage\launcher\WinSparkle.dll"
 Copy-Item (Join-Path $WinSparkleDir 'COPYING') "$stage\launcher\WinSparkle-COPYING.txt"
