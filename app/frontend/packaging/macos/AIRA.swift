@@ -319,5 +319,17 @@ let applicationMenu = NSMenu()
 applicationMenu.addItem(withTitle: "Закрыть AIRA", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
 rootItem.submenu = applicationMenu
 mainMenu.addItem(rootItem)
+let editItem = NSMenuItem()
+let editMenu = NSMenu(title: "Правка")
+editMenu.addItem(withTitle: "Отменить", action: Selector(("undo:")), keyEquivalent: "z")
+let redo = editMenu.addItem(withTitle: "Повторить", action: Selector(("redo:")), keyEquivalent: "z")
+redo.keyEquivalentModifierMask = [.command, .shift]
+editMenu.addItem(.separator())
+editMenu.addItem(withTitle: "Вырезать", action: Selector(("cut:")), keyEquivalent: "x")
+editMenu.addItem(withTitle: "Копировать", action: Selector(("copy:")), keyEquivalent: "c")
+editMenu.addItem(withTitle: "Вставить", action: Selector(("paste:")), keyEquivalent: "v")
+editMenu.addItem(withTitle: "Выделить всё", action: Selector(("selectAll:")), keyEquivalent: "a")
+editItem.submenu = editMenu
+mainMenu.addItem(editItem)
 app.mainMenu = mainMenu
 app.run()
