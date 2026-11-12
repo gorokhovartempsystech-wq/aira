@@ -346,3 +346,14 @@ def test_bridge_does_not_disclose_capability_to_another_page(launcher):
     window.get_current_url = lambda: LOCAL + "/aira/#desktop"
     assert bridge.connection() == server.connection
     assert bridge.connection() is not server.connection
+
+
+def test_second_launch_does_not_open_browser_when_native_window_is_not_ready(launcher, monkeypatch):
+    user = SimpleNamespace(FindWindowW=lambda *args: 0)
+    monkeypatch.setattr(launcher.ctypes, "windll", SimpleNamespace(user32=user), raising=False)
+    monkeypatch.setattr(launcher.time, "sleep", lambda seconds: None)
+    calls = []
+    monkeypatch.setattr(launcher.webbrowser, "open", lambda url: calls.append(url))
+    launcher.STATE.write_text(json.dumps({"url": LOCAL + "/aira/"}))
+    launcher.focus_running()
+    assert not calls

@@ -572,20 +572,17 @@ def run_browser(log):
 
 
 def focus_running():
-    """AIRA уже запущена: вывести её окно вперёд (или открыть в браузере в запасном режиме)."""
+    """AIRA уже запущена: дождаться native-окна, не открывая HTTP bootstrap."""
     user = ctypes.windll.user32
     user.FindWindowW.restype = ctypes.c_void_p
-    hwnd = user.FindWindowW(None, "AIRA")
-    if hwnd:
-        user.ShowWindow(ctypes.c_void_p(hwnd), 9)
-        user.SetForegroundWindow(ctypes.c_void_p(hwnd))
-        return
     for _ in range(100):
-        try:
-            webbrowser.open(json.loads(STATE.read_text(encoding="utf-8"))["url"])
+        hwnd = user.FindWindowW(None, "AIRA")
+        if hwnd:
+            user.ShowWindow(ctypes.c_void_p(hwnd), 9)
+            user.SetForegroundWindow(ctypes.c_void_p(hwnd))
             return
-        except Exception:
-            time.sleep(0.3)
+        time.sleep(0.3)
+    print("Existing AIRA window is not ready; browser fallback is disabled", flush=True)
 
 
 def main():
