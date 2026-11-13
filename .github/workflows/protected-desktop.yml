@@ -18,17 +18,22 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
+          $ProgressPreference = 'SilentlyContinue'
           $work = Join-Path $env:RUNNER_TEMP 'aira-build'
           New-Item -ItemType Directory -Force $work | Out-Null
           $models = Join-Path $work 'models.zip'
-          Invoke-WebRequest 'https://51.250.81.70/downloads/aira-models-0.2m-protected-1.zip' -OutFile $models
+          Write-Host 'Downloading encrypted model archive'
+          Invoke-WebRequest 'https://51.250.81.70/downloads/aira-models-0.2m-protected-1.zip' -OutFile $models -TimeoutSec 600
           if ((Get-FileHash $models -Algorithm SHA256).Hash.ToLower() -ne '7d4f227bd8f9edab1bbcbbddc199be8abeb5abd5b3b4329f717e5d041606ba4e') { throw 'Model archive hash mismatch' }
           Expand-Archive $models (Join-Path $work 'model')
+          Write-Host 'Encrypted model hash verified and archive extracted'
           $old = Join-Path $work 'old.exe'
-          Invoke-WebRequest 'https://51.250.81.70/downloads/AIRA-Setup-0.2.0.exe' -OutFile $old
+          Write-Host 'Downloading pinned PostgreSQL source installer'
+          Invoke-WebRequest 'https://51.250.81.70/downloads/AIRA-Setup-0.2.0.exe' -OutFile $old -TimeoutSec 600
           if ((Get-FileHash $old -Algorithm SHA256).Hash.ToLower() -ne '01717fdeadcdb2ea5aa057e9e4330a2b6941167d962686ec5a439e549771a9fa') { throw 'PostgreSQL source installer hash mismatch' }
           $legacy = Join-Path $work 'legacy'
           $install = Start-Process $old -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/SP-','/NORESTART',"/DIR=$legacy") -Wait -PassThru
+          Write-Host 'Pinned runtime extracted'
           if ($install.ExitCode -ne 0) { throw 'Legacy runtime extraction failed' }
           $version = & "$legacy\pgsql\bin\postgres.exe" --version
           if ($version -notmatch 'PostgreSQL\) 18\.') { throw 'PostgreSQL 18 required' }
