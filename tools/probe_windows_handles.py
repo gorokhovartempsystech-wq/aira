@@ -13,7 +13,7 @@ from ara.docx_analysis_worker.windows._paths import _load_filesystem
 def main():
     helper = runpy.run_path(str(Path(__file__).parents[1] / 'app/backend/tests/acceptance/test_docx_analysis_windows_primitives.py'))
     records = []
-    with tempfile.TemporaryDirectory(prefix='aira-native-probe-') as temp:
+    with tempfile.TemporaryDirectory(prefix='aira-native-probe-', dir=Path.cwd()) as temp:
         root = helper['native_root'].__wrapped__(None, Path(temp))
         kernel = _load_filesystem().native.kernel
         read = kernel.GetProcessHandleCount
@@ -21,6 +21,7 @@ def main():
         def record(phase):
             count = c.c_uint32();assert read(kernel.GetCurrentProcess(), c.byref(count))
             records.append({'phase': phase, 'handles': count.value})
+            print(json.dumps(records[-1]), flush=True)
         record('baseline')
         for cycle in range(3):
             owner = w.acquire_owner(root);record(f'owner-{cycle}')
@@ -28,10 +29,12 @@ def main():
                 try:w.acquire_owner(root)
                 except w.WindowsRuntimeError as error:assert error.code == 'runtime_busy'
                 record(f'conflict-{cycle}')
-                w.WindowsClock().now_ns();record(f'clock-{cycle}')
+                clock = w.WindowsClock();clock.now_ns();record(f'clock-{cycle}')
                 for _ in range(100):assert owner.release_slot(owner.reserve_slot())
                 record(f'slots-{cycle}')
             finally:owner.close()
+            record(f'closed-live-python-objects-{cycle}')
+            del owner, clock
             gc.collect();record(f'closed-{cycle}')
     print(json.dumps(records))
 

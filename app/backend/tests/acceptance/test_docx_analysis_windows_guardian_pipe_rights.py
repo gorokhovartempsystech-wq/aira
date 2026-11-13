@@ -48,7 +48,9 @@ def test_native_pipe_info_on_both_ends_and_duplicate(synchronous):
         ]:
             flags = c.c_uint32()
             api.require(api.kernel.GetNamedPipeInfo(handle, c.byref(flags), None, None, None))
-            assert flags.value == expected
+            # Windows may also report PIPE_REJECT_REMOTE_CLIENTS. Keep exact
+            # direction/type and reject every other unexpected bit.
+            assert flags.value in {expected, expected | 0x8}
     finally:
         duplicate.close()
         assert pair.close()
