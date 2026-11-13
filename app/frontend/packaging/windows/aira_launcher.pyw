@@ -452,8 +452,15 @@ def run_desktop(log):
                     "JSON.stringify({url: location.href, app: !document.getElementById('app').hidden, "
                     "start: !document.getElementById('start').hidden, native: !!(window.__airaRequestClose), "
                     "licence: !document.getElementById('licence').hidden, activation: !!document.querySelector('input.key'), "
-                    "bridge: !!window.pywebview?.api?.connection, tour: !!document.querySelector('.tour')})")
+                    "bridge: !!window.pywebview?.api?.connection, gateText: document.getElementById('licence').innerText, "
+                    "tour: !!document.querySelector('.tour')})")
                 print("selftest page:", probe, flush=True)
+                state = ctx["server"].license_client.view()
+                print("selftest license:", {"phase": state.phase, "error_code": state.error_code}, flush=True)
+                from urllib.request import urlopen
+                for relative in ("assets/js/main.mjs", "assets/js/host.mjs", "client/document-workspace.mjs"):
+                    with urlopen(url + relative, timeout=5) as response:
+                        print("selftest resource:", relative, response.status, response.headers.get("Content-Type"), flush=True)
                 window.destroy()
         except Exception as e:  # noqa: BLE001
             traceback.print_exc()

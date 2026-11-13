@@ -34,14 +34,27 @@ jobs:
           if ($version -notmatch 'PostgreSQL\) 18\.') { throw 'PostgreSQL 18 required' }
           python app/frontend/packaging/updates/fetch_sdk.py windows "$work\winsparkle"
           if ($LASTEXITCODE) { throw 'SDK download failed' }
-      - name: Build protected Windows installer
+      - name: Stage protected Windows runtime
         shell: pwsh
         run: |
           $work = Join-Path $env:RUNNER_TEMP 'aira-build'
           $sdk = (Get-ChildItem "$work\winsparkle" -Filter WinSparkle.dll -Recurse | Where-Object { $_.FullName -match 'x64\\Release' } | Select-Object -First 1).Directory.Parent.Parent.FullName
           $iscc = (Get-ChildItem 'C:\Program Files (x86)\Inno Setup*\ISCC.exe' | Select-Object -First 1).FullName
-          & app/frontend/packaging/windows/build.ps1 -ModelDir "$work\model\models-protected" -PgDir "$work\legacy\pgsql" -Python $env:pythonLocation -Out "$work\release" -Version '0.2.7' -WinSparkleDir $sdk -Iscc $iscc
+          & app/frontend/packaging/windows/build.ps1 -ModelDir "$work\model\models-protected" -PgDir "$work\legacy\pgsql" -Python $env:pythonLocation -Out "$work\release" -Version '0.2.7' -WinSparkleDir $sdk -Iscc $iscc -StageOnly
           if ($LASTEXITCODE) { throw 'Installer build failed' }
+      - name: Verify staged native startup before compression
+        shell: pwsh
+        run: |
+          $work = Join-Path $env:RUNNER_TEMP 'aira-build'
+          python tools/smoke_windows_desktop.py "$work\release\stage"
+          if ($LASTEXITCODE) { throw 'Staged desktop smoke failed' }
+      - name: Build installer from tested staging
+        shell: pwsh
+        run: |
+          $work = Join-Path $env:RUNNER_TEMP 'aira-build'
+          $iscc = (Get-ChildItem 'C:\Program Files (x86)\Inno Setup*\ISCC.exe' | Select-Object -First 1).FullName
+          & $iscc /Q "/DSourceDir=$work\release\stage" '/DAppVersion=0.2.7' "/O$work\release" app/frontend/packaging/windows/aira.iss
+          if ($LASTEXITCODE) { throw 'ISCC failed' }
           $exe = "$work\release\AIRA-Setup-0.2.7.exe"
           $hash = (Get-FileHash $exe -Algorithm SHA256).Hash.ToLower()
           Set-Content "$exe.sha256" "$hash  AIRA-Setup-0.2.7.exe" -Encoding ascii
@@ -60,12 +73,6 @@ jobs:
             ${{ runner.temp }}/aira-build/release/AIRA-Setup-0.2.7.exe
             ${{ runner.temp }}/aira-build/release/AIRA-Setup-0.2.7.exe.sha256
           retention-days: 14
-      - name: Collect synthetic startup diagnostics
-        if: always()
-        shell: pwsh
-        run: |
-          $log = Join-Path $env:LOCALAPPDATA 'AIRA\logs\aira.log'
-          if (Test-Path $log) { Copy-Item $log (Join-Path $env:RUNNER_TEMP 'AIRA-smoke.log') }
       - uses: actions/upload-artifact@v4
         if: always()
         with:

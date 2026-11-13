@@ -3,6 +3,8 @@ import argparse
 import json
 import os
 import subprocess
+import tempfile
+import shutil
 from pathlib import Path
 
 
@@ -11,8 +13,9 @@ def main():
     parser.add_argument('installation', type=Path)
     args = parser.parse_args()
     app = args.installation.resolve(strict=True)
-    child_env = dict(os.environ, AIRA_SELFTEST='12')
-    log = Path(os.environ['LOCALAPPDATA']) / 'AIRA/logs/aira.log'
+    profile = Path(tempfile.mkdtemp(prefix='aira-release-smoke-', dir=os.environ['LOCALAPPDATA']))
+    child_env = dict(os.environ, AIRA_SELFTEST='12', LOCALAPPDATA=str(profile))
+    log = profile / 'AIRA/logs/aira.log'
     assert not log.exists(), 'Smoke requires a fresh disposable runner profile'
     command = [str(app/'python/python.exe'), '-s', '-E', str(app/'launcher/aira_launcher.pyw')]
     child = subprocess.Popen(command, env=child_env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -33,7 +36,11 @@ def main():
         assert records[0]['licence'] is True and records[0]['app'] is False
         print('Installed Windows release started native WebView and activation screen.')
     finally:
-        subprocess.run(command+['--stop-db'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=45)
+        subprocess.run(command+['--stop-db'], env=child_env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=45)
+        if log.exists():
+            destination = Path(os.environ['RUNNER_TEMP']) / 'AIRA-smoke.log'
+            with destination.open('ab') as output: output.write(log.read_bytes())
+        shutil.rmtree(profile)
 
 
 if __name__ == '__main__':main()
