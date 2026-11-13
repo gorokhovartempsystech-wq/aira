@@ -1,0 +1,49 @@
+name: model-protection
+
+on:
+  pull_request:
+    paths: ["app/backend/**", "app/frontend/**", "engine/aira_ml/engine.py", "tools/probe_device_vault.py", ".github/workflows/model-protection.yml"]
+  push:
+    branches: [main]
+    paths: ["app/backend/**", "app/frontend/**", "engine/aira_ml/engine.py", "tools/probe_device_vault.py"]
+
+jobs:
+  protection:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: app/backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r requirements.lock
+      - name: Crypto, decoder and protected runtime (no database)
+        run: >-
+          python -m pytest --noconftest -q
+          tests/acceptance/test_model_protection.py
+          tests/acceptance/test_protected_model_bundle.py
+          tests/acceptance/test_protected_model_bootstrap.py
+          tests/acceptance/test_model_access_transport.py
+          tests/acceptance/test_protected_license_runtime.py
+      - name: Native credential vault (synthetic record, deleted afterward)
+        run: python ../../tools/probe_device_vault.py
+        env:
+          PYTHONPATH: src
+      - name: Windows native handles, channels and driver
+        if: runner.os == 'Windows'
+        run: >-
+          python -m pytest --noconftest -q
+          tests/acceptance/test_docx_analysis_windows_primitives.py
+          tests/acceptance/test_docx_analysis_windows_io.py
+          tests/acceptance/test_docx_analysis_windows_guardian.py
+          tests/acceptance/test_docx_analysis_windows_guardian_pipe_rights.py
+          tests/acceptance/test_docx_analysis_windows_driver.py
+          tests/acceptance/test_windows_closed_write_contract.py
+      - name: Updater integration
+        run: python ../frontend/packaging/updates/test_updates.py

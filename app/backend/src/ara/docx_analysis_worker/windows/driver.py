@@ -148,7 +148,9 @@ def _actor(state, name, target):
             state.cv.notify_all()
 
 
-def start_fixture_attempt(slot, identity, budget, *, request, execution_spec, mode="success"):
+def start_fixture_attempt(
+    slot, identity, budget, *, request, execution_spec, mode="success", model_key=None
+):
     try:
         run, attempt, worker, fence = identity_values(identity)
         budget = Budget(*validate_budget(budget))
@@ -179,6 +181,12 @@ def start_fixture_attempt(slot, identity, budget, *, request, execution_spec, mo
                 "execution_spec_b64": base64.b64encode(execution_spec).decode(),
             },
         )
+        if mode == "protected_model":
+            from ara.model_protection.private_bootstrap import wrap_request
+
+            frame = wrap_request(model_key, frame)
+        elif model_key is not None:
+            raise ValueError()
     except Exception:
         raise WindowsRuntimeError("validation_error") from None
     clock = WindowsClock()
@@ -200,7 +208,13 @@ def start_fixture_attempt(slot, identity, budget, *, request, execution_spec, mo
             mode=mode,
         )
         state = State(
-            holder, binding, budget, frame, spec_sha, clock, fixture=mode != "local_model"
+            holder,
+            binding,
+            budget,
+            frame,
+            spec_sha,
+            clock,
+            fixture=mode not in {"local_model", "protected_model"},
         )
         obj = WindowsAttempt(_KEY, state)
         _REGISTRY[id(obj)] = obj

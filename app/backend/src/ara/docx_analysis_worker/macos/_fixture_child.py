@@ -10,8 +10,8 @@ import time
 from ..wire import encode_message
 
 
-def run_fixture(binding, request, mode):
-    if mode == "local_model":
+def run_fixture(binding, request, mode, *, model_key=None):
+    if mode in {"local_model", "protected_model"}:
         from ..native_model import run_native
 
         def write(raw):
@@ -21,7 +21,9 @@ def run_fixture(binding, request, mode):
                     raise OSError()
                 raw = raw[count:]
 
-        return run_native(request, write)
+        return run_native(
+            request, write, **({"model_key": model_key} if mode == "protected_model" else {})
+        )
     native_hang = mode in ("ignore_term", "result_hang")
     library = None
     if native_hang:

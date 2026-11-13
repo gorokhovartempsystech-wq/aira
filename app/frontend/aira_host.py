@@ -182,7 +182,7 @@ def licence_stub_routes(app):
 
 def build_app(*, database_url, runtime_root, port, analysis="model", initialize=True,
               licence_stub=False, dev=False, dev_pages=None, on_ready=None, log_file=None,
-              native_token=None):
+              native_token=None, model_key_provider=None):
     """Возвращает ASGI-приложение. Воркер анализа запускается и останавливается в lifespan."""
     from sqlalchemy import create_engine
 
@@ -201,7 +201,8 @@ def build_app(*, database_url, runtime_root, port, analysis="model", initialize=
         from ara.docx_analysis_worker.supervisor.local_model import create_local_model_supervisor as factory
     else:
         from ara.docx_analysis_worker.supervisor.word_fixture import create_word_fixture_supervisor as factory
-    supervisor = factory(settings=settings, user_id=USER, project_id=PROJECT, installation_id=INSTALL, root=root)
+    supervisor = factory(settings=settings, user_id=USER, project_id=PROJECT, installation_id=INSTALL, root=root,
+                         **({"model_key_provider": model_key_provider} if analysis == "model" and model_key_provider is not None else {}))
     app = create_app(document_runtime=runtime, analysis_supervisor=supervisor, table_editor=True, field_editor=True)
     if licence_stub:
         licence_stub_routes(app)

@@ -42,6 +42,13 @@ def package_identity(model_dir, engine_dir):
     for path in sorted(Path(__file__).with_name("prototype").glob("*.py")):
         adapter.update(path.name.encode())
         adapter.update(path.read_bytes())
+    if "protection" in manifest:
+        from ara.model_protection.bundle import configuration
+
+        require(configuration(root) is not None)
+        for path in sorted((Path(__file__).parents[1] / "model_protection").glob("*.py")):
+            adapter.update(path.name.encode())
+            adapter.update(path.read_bytes())
     return ExecutionSpec(
         "local_model",
         "0.1.0",
@@ -84,7 +91,7 @@ def adapt(raw, *, questions=()):
     return json.dumps(result, ensure_ascii=False, allow_nan=False, separators=(",", ":")).encode()
 
 
-def run(request, *, model_dir, engine_dir, emit, budget_seconds=285):
+def run(request, *, model_dir, engine_dir, emit, budget_seconds=285, model_key=None):
     require(type(budget_seconds) in (int, float) and 0 < budget_seconds <= 290)
     deadline = time.monotonic() + budget_seconds
     spec = package_identity(model_dir, engine_dir)
@@ -102,7 +109,13 @@ def run(request, *, model_dir, engine_dir, emit, budget_seconds=285):
     send("stage", 1, stage="loading_model")
     from aira_ml.engine import Engine
 
-    model = Engine(model_dir, threads=6)
+    from ara.model_protection.bundle import ModelReader, configuration
+
+    if configuration(model_dir) is not None:
+        model = Engine(model_dir, threads=6, model_reader=ModelReader(model_dir, model_key))
+    else:
+        require(model_key is None)
+        model = Engine(model_dir, threads=6)
     require(model.manifest["version"] == spec.models_version)
     calls = {"embedder": 0, "nli": 0}
 

@@ -8,8 +8,8 @@
     {app}\\launcher\\          этот файл и иконка
 
 Данные пользователя: %LOCALAPPDATA%\\AIRA (база, рабочие файлы проверки, журналы).
-Лицензирования в пилотной сборке нет. Окно управления остаётся открытым, пока работает AIRA:
-«Выйти» штатно останавливает сервер и базу.
+Лицензия проверяется при запуске. Доступ к зашифрованной модели подтверждается
+закрытым ключом устройства из Windows Credential Manager.
 """
 
 import ctypes
@@ -217,6 +217,7 @@ def clear_stuck_run(pg_port, run_id):
 class Server:
     def __init__(self):
         self.server = self.thread = self.url = self.connection = None
+        self.license_client = self.license_home = None
         self.error = None
 
     def start(self, pg_port, say):
@@ -230,12 +231,24 @@ class Server:
         self.url = f"http://127.0.0.1:{port}/aira/"
         analysis = "model" if (MODEL / "models" / "manifest.json").exists() else "fixture"
         say("Загружаем модель…" if analysis == "model" else "Запускаем сервер…")
+        from ara.desktop.access import new_session_token
+        from ara.desktop.data_home import open_home
+        from ara.model_protection.bundle import configuration
+        from ara.model_protection.integration import NativeApplication, make_license_client
+
+        updates = json.loads((APP / "launcher/release-config.json").read_text())
+        self.license_home = open_home(DATA / "state-v2")
+        self.license_client = make_license_client(updates["license_origin"], self.license_home.path("license"), MODEL / "models")
+        token = new_session_token()
         ready = threading.Event()
         app = aira_host.build_app(database_url=f"postgresql+psycopg://postgres@127.0.0.1:{pg_port}/aira",
                                   runtime_root=RUNTIME, port=port, analysis=analysis, initialize=True,
-                                  on_ready=ready.set, log_file=LOGS / "aira.log")
+                                  on_ready=ready.set, log_file=LOGS / "aira.log", native_token=token.hex(),
+                                  model_key_provider=self.license_client.require_model_key if configuration(MODEL / "models") else None)
         self.connection = dict(app.state.aira_connection)
-        config = uvicorn.Config(app, host="127.0.0.1", port=port, access_log=False, log_level="info")
+        self.license_client.start()
+        protected_app = NativeApplication(app, self.license_client, f"http://127.0.0.1:{port}", token)
+        config = uvicorn.Config(protected_app, host="127.0.0.1", port=port, proxy_headers=False, access_log=False, log_level="info")
         self.server = uvicorn.Server(config)
 
         def serve():
@@ -258,6 +271,12 @@ class Server:
         if self.server and self.thread and self.thread.is_alive():
             self.server.should_exit = True
             self.thread.join(timeout=60)
+        if self.thread and self.thread.is_alive():
+            raise LaunchError("Сервер AIRA ещё завершает работу.")
+        if self.license_client is not None and not self.license_client.shutdown(timeout=5):
+            raise LaunchError("Проверка лицензии ещё завершает работу.")
+        if self.license_home is not None and not self.license_home.close():
+            raise LaunchError("Не удалось подтвердить закрытие данных лицензии.")
         try:
             STATE.unlink()
         except OSError:
@@ -278,6 +297,7 @@ def boot_backend(server, state, say, ask):
                            "Снять блокировку? Документы и результаты не пострадают."):
             raise
         clear_stuck_run(state["pg"], run_id)
+        server.stop()
         server.__init__()
         return server.start(state["pg"], say)
 
@@ -545,12 +565,7 @@ def focus_running():
         user.ShowWindow(ctypes.c_void_p(hwnd), 9)
         user.SetForegroundWindow(ctypes.c_void_p(hwnd))
         return
-    for _ in range(100):
-        try:
-            webbrowser.open(json.loads(STATE.read_text(encoding="utf-8"))["url"])
-            return
-        except Exception:
-            time.sleep(0.3)
+    user.MessageBoxW(None, "AIRA уже запускается. Дождитесь появления окна.", "AIRA", 0x40)
 
 
 def main():
@@ -571,23 +586,14 @@ def main():
             return
     except Exception as error:
         print("Update check unavailable:", type(error).__name__, flush=True)
-    mode = "browser" if os.environ.get("AIRA_BROWSER_MODE") or "--browser" in sys.argv else "desktop"
-    if mode == "desktop":
-        try:
-            import webview  # noqa: F401
-        except Exception:
-            traceback.print_exc()
-            mode = "browser"
-    print("ui mode:", mode, flush=True)
-    if mode == "desktop":
-        try:
-            run_desktop(log)
-            return
-        except Exception:
-            # Нет WebView2 или окно не создалось: продолжаем в браузере.
-            traceback.print_exc()
-            print("desktop window failed, falling back to browser mode", flush=True)
-    run_browser(log)
+    if os.environ.get("AIRA_BROWSER_MODE") or "--browser" in sys.argv:
+        ctypes.windll.user32.MessageBoxW(None, "Эта сборка AIRA работает в окне приложения. Запустите её обычным ярлыком.", "AIRA", 0x40)
+        return
+    try:
+        run_desktop(log)
+    except Exception:
+        traceback.print_exc()
+        ctypes.windll.user32.MessageBoxW(None, "Не удалось открыть окно AIRA. Проверьте установку Microsoft Edge WebView2 Runtime и повторите запуск. Подробности — в журнале AIRA.", "AIRA", 0x10)
 
 
 if __name__ == "__main__":

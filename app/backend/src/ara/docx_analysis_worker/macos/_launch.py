@@ -19,6 +19,7 @@ MODES = frozenset(
         "review",
         "review2",
         "local_model",
+        "protected_model",
         "wait",
         "ignore_term",
         "result_hang",

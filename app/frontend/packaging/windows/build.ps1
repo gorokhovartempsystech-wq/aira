@@ -10,7 +10,7 @@ param(
   [string]$PgDir = "$env:USERPROFILE\AIRA-dev\pgsql",
   [string]$Python = "$env:LOCALAPPDATA\Programs\Python\Python312",
   [string]$Out = "$env:USERPROFILE\AIRA-dev\build",
-  [string]$Version = '0.2.4',
+  [string]$Version = '0.2.7',
   [Parameter(Mandatory=$true)][string]$WinSparkleDir,
   [string]$Iscc = "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe",
   [switch]$NoModel,
@@ -32,6 +32,12 @@ function Copy-Tree($from, $to, [string[]]$excludeDirs = @(), [string[]]$excludeF
 foreach ($p in @($py, (Join-Path $PgDir 'bin\postgres.exe'))) { if (-not (Test-Path $p)) { throw "Not found: $p" } }
 if (-not $NoModel -and -not (Test-Path (Join-Path $ModelDir 'manifest.json'))) { throw "Model manifest not found in $ModelDir (or use -NoModel)" }
 if (-not (Test-Path (Join-Path $WinSparkleDir 'x64\Release\WinSparkle.dll'))) { throw 'Verified WinSparkle 0.9.4 distribution required' }
+if ($NoModel -and -not $StageOnly) { throw 'NoModel is allowed only for development staging, not a release installer' }
+if (-not $NoModel) {
+  $manifest = Get-Content (Join-Path $ModelDir 'manifest.json') -Raw | ConvertFrom-Json
+  if ($manifest.protection.format -ne 'aira-model/1') { throw 'A protected model bundle is required for release builds' }
+  if (@(Get-ChildItem $ModelDir -Recurse -Filter '*.onnx').Count) { throw 'Plaintext model files must not enter the installer' }
+}
 if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
 New-Item -ItemType Directory -Force $stage | Out-Null
 

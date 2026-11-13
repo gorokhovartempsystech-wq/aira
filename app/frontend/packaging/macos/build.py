@@ -42,8 +42,8 @@ def main():
     parser.add_argument(
         "--sparkle", required=True, type=Path, help="Verified Sparkle 2.10.1 distribution"
     )
-    parser.add_argument("--version", default="0.2.5")
-    parser.add_argument("--build", type=int, default=4)
+    parser.add_argument("--version", default="0.2.7")
+    parser.add_argument("--build", type=int, default=7)
     args = parser.parse_args()
     if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", args.version) or args.build < 3:
         parser.error("invalid release version/build")
@@ -67,6 +67,12 @@ def main():
     ):
         if not (source / relative).is_file():
             parser.error(f"missing payload entry: {relative}")
+
+    manifest = json.loads((source / "app/backend/ml_bundle/models/manifest.json").read_text())
+    if manifest.get("protection", {}).get("format") != "aira-model/1":
+        parser.error("a protected model bundle is required")
+    if any((source / "app/backend/ml_bundle/models").rglob("*.onnx")):
+        parser.error("plaintext model files must not enter the installer")
 
     here = Path(__file__).resolve().parent
     with tempfile.TemporaryDirectory(prefix="aira-macos-build-", dir="/private/tmp") as temp:
@@ -103,7 +109,7 @@ def main():
                     "SUEnableAutomaticChecks": True,
                     "SUAutomaticallyUpdate": True,
                     "SUEnableSystemProfiling": False,
-                    "LSMinimumSystemVersion": "13.0",
+                    "LSMinimumSystemVersion": "14.0",
                     "NSHighResolutionCapable": True,
                     "NSAppTransportSecurity": {
                         "NSAllowsLocalNetworking": True,
@@ -118,7 +124,7 @@ def main():
             "/usr/bin/xcrun",
             "swiftc",
             "-target",
-            "arm64-apple-macos13.0",
+            "arm64-apple-macos14.0",
             "-module-cache-path",
             str(work / "module-cache"),
             "-O",
@@ -134,6 +140,19 @@ def main():
             "-o",
             str(executable),
         )
+        # Newly added wheel extensions may arrive unsigned. Keep valid vendor
+        # signatures, sign only unsigned/changed Mach-O objects before the bundle.
+        for item in payload.rglob("*"):
+            if not item.is_file() or item.is_symlink():
+                continue
+            with item.open("rb") as handle:
+                magic = handle.read(4)
+            if magic not in (b"\xcf\xfa\xed\xfe", b"\xfe\xed\xfa\xcf", b"\xca\xfe\xba\xbe", b"\xbe\xba\xfe\xca"):
+                continue
+            checked = subprocess.run(["/usr/bin/codesign", "--verify", str(item)],
+                                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            if checked.returncode:
+                run("/usr/bin/codesign", "--force", "--sign", "-", str(item))
         run("/usr/bin/codesign", "--force", "--sign", "-", str(contents.parent))
         run("/usr/bin/codesign", "--verify", "--deep", "--strict", str(contents.parent))
         (volume / "Applications").symlink_to("/Applications")

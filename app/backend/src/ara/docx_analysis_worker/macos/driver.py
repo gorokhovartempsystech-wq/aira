@@ -65,7 +65,9 @@ class MacAttempt(LocalResource):
         return True
 
 
-def start_fixture_attempt(slot, identity, budget, *, request, execution_spec, mode="success"):
+def start_fixture_attempt(
+    slot, identity, budget, *, request, execution_spec, mode="success", model_key=None
+):
     try:
         run_id, attempt_id, worker_id, fence = identity_values(identity)
         budget = Budget(*validate_budget(budget))
@@ -93,6 +95,12 @@ def start_fixture_attempt(slot, identity, budget, *, request, execution_spec, mo
                 execution_spec_b64=base64.b64encode(execution_spec).decode(),
             ),
         )
+        if mode == "protected_model":
+            from ara.model_protection.private_bootstrap import wrap_request
+
+            frame = wrap_request(model_key, frame)
+        elif model_key is not None:
+            raise ValueError()
     except Exception:
         raise MacRuntimeError("validation_error") from None
     clock = DarwinClock()
@@ -109,7 +117,13 @@ def start_fixture_attempt(slot, identity, budget, *, request, execution_spec, mo
     try:
         control = ControlPipe(holder, binding, budget, clock)
         pump = DataPump(
-            holder, control, binding, spec_sha, frame, clock, fixture=mode != "local_model"
+            holder,
+            control,
+            binding,
+            spec_sha,
+            frame,
+            clock,
+            fixture=mode not in {"local_model", "protected_model"},
         )
         result = MacAttempt(_ISSUE, pump)
         pump.thread.start()

@@ -8,6 +8,7 @@ from uuid import UUID
 from .. import LicenseError
 
 _ERRORS = {
+    "model_access_unavailable": (503, "Protected model access could not be confirmed"),
     "validation_error": (422, "Invalid license input"),
     "invalid_response": (502, "Invalid license server response"),
     "invalid_record": (500, "Invalid stored license state"),
