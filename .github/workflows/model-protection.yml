@@ -12,7 +12,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-14, windows-latest]
+        os: [macos-26, windows-latest]
     runs-on: ${{ matrix.os }}
     defaults:
       run:
@@ -45,5 +45,10 @@ jobs:
           tests/acceptance/test_docx_analysis_windows_guardian_pipe_rights.py
           tests/acceptance/test_docx_analysis_windows_driver.py
           tests/acceptance/test_windows_closed_write_contract.py
+      - name: Windows resource diagnostics
+        if: always() && runner.os == 'Windows'
+        run: python ../../tools/probe_windows_handles.py
+        env:
+          PYTHONPATH: src
       - name: Updater integration
         run: python ../frontend/packaging/updates/test_updates.py
