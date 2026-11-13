@@ -60,3 +60,16 @@ jobs:
             ${{ runner.temp }}/aira-build/release/AIRA-Setup-0.2.7.exe
             ${{ runner.temp }}/aira-build/release/AIRA-Setup-0.2.7.exe.sha256
           retention-days: 14
+      - name: Collect synthetic startup diagnostics
+        if: always()
+        shell: pwsh
+        run: |
+          $log = Join-Path $env:LOCALAPPDATA 'AIRA\logs\aira.log'
+          if (Test-Path $log) { Copy-Item $log (Join-Path $env:RUNNER_TEMP 'AIRA-smoke.log') }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: AIRA-Windows-smoke-log
+          path: ${{ runner.temp }}/AIRA-smoke.log
+          if-no-files-found: ignore
+          retention-days: 3

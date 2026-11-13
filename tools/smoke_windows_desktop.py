@@ -25,6 +25,10 @@ def main():
         assert code == 0
         lines = log.read_text(encoding='utf-8').splitlines()
         records = [json.loads(line.split('selftest page:',1)[1].strip()) for line in lines if 'selftest page:' in line]
+        print('Native page observations:', json.dumps(records), flush=True)
+        if len(records) != 1 or not records[0].get('activation') or not records[0].get('bridge'):
+            # This is a fresh synthetic runner profile; no license key was entered.
+            print('Synthetic startup log tail:', '\n'.join(lines[-70:]), flush=True)
         assert len(records) == 1 and records[0]['activation'] is True and records[0]['bridge'] is True
         assert records[0]['licence'] is True and records[0]['app'] is False
         print('Installed Windows release started native WebView and activation screen.')
