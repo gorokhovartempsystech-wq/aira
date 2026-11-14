@@ -10,6 +10,7 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 import server
+from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
 
@@ -101,7 +102,7 @@ class DeploymentTests(unittest.TestCase):
 
     def test_invalid_signature_and_unsigned_token(self):
         other = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-        with self.assertRaises(Exception):
+        with self.assertRaises(InvalidSignature):
             self.verifier.verify(self.token(private=other), now=1100)
         header = encode(b'{"alg":"none","typ":"JWT"}')
         with self.assertRaises(ValueError):

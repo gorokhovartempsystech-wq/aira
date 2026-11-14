@@ -244,15 +244,17 @@ class ReleaseTests(unittest.TestCase):
                     "Content-Type": "application/json",
                 },
             )
-            with patch.object(
-                server,
-                "promote",
-                side_effect=lambda root, downloads, claims, document: original(
-                    root, downloads, claims, document, self.public
+            with (
+                patch.object(
+                    server,
+                    "promote",
+                    side_effect=lambda root, downloads, claims, document: original(
+                        root, downloads, claims, document, self.public
+                    ),
                 ),
+                urlopen(request, timeout=3) as response,
             ):
-                with urlopen(request, timeout=3) as response:
-                    self.assertEqual(json.load(response)["version"], self.version)
+                self.assertEqual(json.load(response)["version"], self.version)
         finally:
             http.shutdown()
             thread.join()

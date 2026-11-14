@@ -12,6 +12,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from urllib.request import urlopen
 
+from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
 
@@ -168,7 +169,7 @@ class Handler(BaseHTTPRequestHandler):
             if not authorization.startswith("Bearer "):
                 raise ValueError("missing token")
             claims = self.verifier.verify(authorization[7:])
-        except Exception:
+        except (OSError, ValueError, KeyError, TypeError, AttributeError, InvalidSignature):
             self.respond(401, {"error": "unauthorized"})
             return
         try:
@@ -187,7 +188,7 @@ class Handler(BaseHTTPRequestHandler):
         except (ValueError, TypeError, KeyError):
             self.respond(400, {"error": "invalid deployment"})
             return
-        except Exception:
+        except (OSError, RuntimeError):
             self.respond(500, {"error": "publication failed"})
             return
         self.respond(200, result)

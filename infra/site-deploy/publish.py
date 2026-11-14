@@ -83,6 +83,13 @@ def main(argv=None):
 if __name__ == "__main__":
     try:
         main()
-    except Exception as error:
+    except (
+        OSError,
+        ValueError,
+        KeyError,
+        TypeError,
+        RuntimeError,
+        subprocess.SubprocessError,
+    ) as error:
         # urllib exceptions can contain request details. Never print tokens.
         raise SystemExit("Site publication failed: " + type(error).__name__) from None

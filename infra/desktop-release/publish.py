@@ -20,6 +20,7 @@ from common import (
     filename,
     version_for_run,
 )
+from cryptography.exceptions import InvalidSignature
 
 ENDPOINT = ORIGIN + "/_deploy/releases"
 
@@ -186,5 +187,14 @@ def main():
 if __name__ == "__main__":
     try:
         main()
-    except Exception as error:
+    except (
+        OSError,
+        ValueError,
+        KeyError,
+        TypeError,
+        RuntimeError,
+        subprocess.SubprocessError,
+        InvalidSignature,
+        ET.ParseError,
+    ) as error:
         raise SystemExit("Desktop publication failed: " + type(error).__name__) from None

@@ -23,6 +23,7 @@ from common import (
     filename,
     version_for_run,
 )
+from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 ROOT = Path("/var/lib/aira-release-publish")
@@ -206,6 +207,10 @@ def promote(root, downloads, claims, document, public_key=PUBLIC_KEY):
         destination = downloads / record["filename"]
         if destination.exists() and digest(destination) != record["sha256"]:
             raise ValueError("installer URL is immutable")
+        checksum = downloads / (record["filename"] + ".sha256")
+        expected_checksum = record["sha256"] + "  " + record["filename"] + "\n"
+        if checksum.exists() and checksum.read_text() != expected_checksum:
+            raise ValueError("existing checksum mismatch")
     releases = root / "releases"
     releases.mkdir(exist_ok=True)
     release = Path(tempfile.mkdtemp(prefix="release-", dir=releases))
@@ -216,18 +221,48 @@ def promote(root, downloads, claims, document, public_key=PUBLIC_KEY):
     for record in records.values():
         source, destination = stage / record["filename"], downloads / record["filename"]
         if not destination.exists():
-            source.chmod(0o644)
-            os.link(source, destination)
+            descriptor, path = tempfile.mkstemp(prefix=".release-", suffix=".part", dir=downloads)
+            temporary = Path(path)
+            try:
+                with source.open("rb") as stream, os.fdopen(descriptor, "wb") as output:
+                    shutil.copyfileobj(stream, output, 1024 * 1024)
+                    output.flush()
+                    os.fsync(output.fileno())
+                if digest(temporary) != record["sha256"]:
+                    raise ValueError("public artifact copy mismatch")
+                temporary.chmod(0o644)
+                # The link stays within downloads even with systemd bind mounts.
+                os.link(temporary, destination)
+            finally:
+                temporary.unlink(missing_ok=True)
         checksum = downloads / (record["filename"] + ".sha256")
         if not checksum.exists():
-            with checksum.open("x") as output:
-                output.write(record["sha256"] + "  " + record["filename"] + "\n")
+            descriptor, path = tempfile.mkstemp(prefix=".checksum-", suffix=".part", dir=downloads)
+            temporary = Path(path)
+            try:
+                with os.fdopen(descriptor, "w") as output:
+                    output.write(record["sha256"] + "  " + record["filename"] + "\n")
+                    output.flush()
+                    os.fsync(output.fileno())
+                temporary.chmod(0o644)
+                os.link(temporary, checksum)
+            finally:
+                temporary.unlink(missing_ok=True)
     for path in release.iterdir():
         path.chmod(0o644)
     pointer = root / "next"
     pointer.unlink(missing_ok=True)
     pointer.symlink_to(release.relative_to(root), target_is_directory=True)
     os.replace(pointer, root / "current")
+    # Public immutable files become the replay source; do not retain duplicate GBs.
+    for record in records.values():
+        source = stage / record["filename"]
+        replacement = stage / (record["filename"] + ".public-link")
+        try:
+            replacement.symlink_to(downloads / record["filename"])
+            os.replace(replacement, source)
+        except OSError:
+            replacement.unlink(missing_ok=True)
     return manifest
 
 
@@ -263,7 +298,7 @@ class Handler(BaseHTTPRequestHandler):
             if not authorization.startswith("Bearer "):
                 raise ValueError("missing token")
             claims = self.verifier.verify(authorization[7:])
-        except Exception:
+        except (OSError, ValueError, KeyError, TypeError, AttributeError, InvalidSignature):
             self.respond(401, {"error": "unauthorized"})
             return
         try:
@@ -291,10 +326,10 @@ class Handler(BaseHTTPRequestHandler):
                     length,
                     self.headers.get("X-Aira-SHA256", ""),
                 )
-        except (ValueError, TypeError, KeyError):
+        except (ValueError, TypeError, KeyError, InvalidSignature, ET.ParseError):
             self.respond(400, {"error": "invalid release; previous release retained"})
             return
-        except Exception:
+        except (OSError, RuntimeError):
             self.respond(500, {"error": "publication failed; inspect current release receipt"})
             return
         self.respond(200, result)

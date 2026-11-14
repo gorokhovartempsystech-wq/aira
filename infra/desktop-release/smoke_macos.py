@@ -49,8 +49,8 @@ def main():
                 try:
                     reply = queue.Queue()
 
-                    def handshake():
-                        reply.put(child.stdout.read(4097))
+                    def handshake(process=child, response_queue=reply):
+                        response_queue.put(process.stdout.read(4097))
 
                     reader = threading.Thread(target=handshake, daemon=True)
                     reader.start()

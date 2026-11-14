@@ -24,8 +24,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: desktop-release
-  cancel-in-progress: false
+  group: desktop-release-${{ github.event_name == 'pull_request' && github.ref || 'main' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   verify:
