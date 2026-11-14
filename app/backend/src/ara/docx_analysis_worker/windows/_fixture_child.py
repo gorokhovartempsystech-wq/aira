@@ -8,11 +8,13 @@ import time
 from ..wire import encode_message
 
 
-def run_fixture(api, binding, request, mode, emit, diagnostic_handle):
-    if mode == "local_model":
+def run_fixture(api, binding, request, mode, emit, diagnostic_handle, *, model_key=None):
+    if mode in {"local_model", "protected_model"}:
         from ..native_model import run_native
 
-        return run_native(request, emit)
+        return run_native(
+            request, emit, **({"model_key": model_key} if mode == "protected_model" else {})
+        )
 
     def send(kind, seq, **values):
         emit(encode_message(binding, kind=kind, seq=seq, values=values))

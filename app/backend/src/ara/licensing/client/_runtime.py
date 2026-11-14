@@ -31,9 +31,12 @@ def _default_clock():
 
 
 class LicenseClient:
-    def __init__(self, origin, store, *, device_provider=None, clock=None, transport=None):
+    def __init__(
+        self, origin, store, *, device_provider=None, clock=None, transport=None, model_access=None
+    ):
         default_transport = HttpsTransport(origin)
         self._store = store
+        self._model_access, self._model_key = model_access, None
         self._device = read_device_id if device_provider is None else device_provider
         self._clock = _default_clock() if clock is None else clock
         self._transport = default_transport if transport is None else transport
@@ -81,6 +84,7 @@ class LicenseClient:
 
     def _failed_locked(self, code):
         self._permit = None
+        self._model_key = None
         self._phase = "expired" if code == "license_expired" else "failed"
         self._error = code
         self._cancelled = True
@@ -124,6 +128,17 @@ class LicenseClient:
                 fail("access_denied")
             return self._permit
 
+    def require_model_key(self):
+        self._owner()
+        with self._lock:
+            self._refresh_locked()
+            if self._phase != "active" or self._permit is None:
+                fail("access_denied")
+            require_access(self._permit, now_ns=self._last)
+            if type(self._model_key) is not bytes or len(self._model_key) != 32:
+                fail("model_access_unavailable")
+            return self._model_key
+
     def start(self, key=None):
         self._owner()
         try:
@@ -145,6 +160,7 @@ class LicenseClient:
                     return self._snapshot_locked()
                 fail("client_busy")
             self._permit, self._error = None, None
+            self._model_key = None
             self._cancelled = False
             try:
                 self._started = self._now_locked()
@@ -229,6 +245,24 @@ class LicenseClient:
                 fail("network_unavailable")
             received = self._checkpoint()
             permit = authorize_start(request, data, started_ns=self._started, received_ns=received)
+            model_key = None
+            if self._model_access is not None:
+                from ara.model_protection.access_wire import AccessError
+
+                try:
+                    model_key = self._model_access.unlock(
+                        permit, device_id=device, license_key=key, checkpoint=self._checkpoint
+                    )
+                    if type(model_key) is not bytes or len(model_key) != 32:
+                        fail("model_access_unavailable")
+                except AccessError as error:
+                    if error.code == "enrollment_required":
+                        with self._lock:
+                            self._refresh_locked()
+                            if self._phase == "checking" and not self._cancelled:
+                                self._phase = "activation_required"
+                        return
+                    fail("model_access_unavailable")
             if key is not None:
                 self._checkpoint()
                 try:
@@ -240,6 +274,7 @@ class LicenseClient:
                 self._refresh_locked()
                 if self._phase == "checking" and not self._cancelled:
                     require_access(permit, now_ns=self._last)
+                    self._model_key = model_key
                     self._permit, self._phase, self._error = permit, "active", None
         except Exception as exc:
             code = exc.code if isinstance(exc, (ClientError, LicenseError)) else "client_error"
@@ -255,6 +290,7 @@ class LicenseClient:
         self._owner()
         with self._lock:
             self._cancelled = True
+            self._model_key = None
             self._permit, self._phase, self._error = None, "closed", None
 
     def _pending_locked(self):

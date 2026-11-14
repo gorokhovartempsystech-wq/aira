@@ -120,6 +120,7 @@ final class Desktop: NSObject, NSApplicationDelegate, SPUUpdaterDelegate, NSWind
             },
             saveDocx: (name, bytes) => save(name, bytes, 'docx'),
             saveFile: (name, bytes) => save(name, bytes, 'txt'),
+            checkUpdates: () => call('updates'),
           };
         })();
         """
@@ -197,7 +198,11 @@ final class Desktop: NSObject, NSApplicationDelegate, SPUUpdaterDelegate, NSWind
             replyHandler(nil, "access_denied")
             return
         }
-        if body["op"] as? String == "open" {
+        if body["op"] as? String == "updates" {
+            guard updater != nil else { replyHandler(nil, "updater_unavailable"); return }
+            updater?.checkForUpdates(nil)
+            replyHandler(true, nil)
+        } else if body["op"] as? String == "open" {
             let panel = NSOpenPanel()
             panel.allowedContentTypes = [UTType(filenameExtension: "docx")!]
             panel.beginSheetModal(for: window) { answer in
@@ -333,3 +338,4 @@ editItem.submenu = editMenu
 mainMenu.addItem(editItem)
 app.mainMenu = mainMenu
 app.run()
+

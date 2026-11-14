@@ -81,7 +81,187 @@ def init_database(engine):
         ledger.provision_new_database(engine, installation_id=INSTALL, expected_revision=fence.revision)
 
 
-def frontend_routes(app, port, *, dev=False, dev_pages=None, log_file=None, token=None, native_only=False):
+class OnboardingStore:
+    """Two local preferences, outside the replaceable app and managed database home."""
+
+    def __init__(self, path):
+        import threading
+
+        self.path = Path(path) if path is not None else None
+        self.lock = threading.RLock()
+
+    def read(self):
+        import json
+
+        if self.path is None:
+            raise OSError("Onboarding profile is not configured")
+        with self.lock:
+            try:
+                with self.path.open("rb") as stream:
+                    raw = stream.read(1025)
+            except FileNotFoundError:
+                return {"start": "new", "doc": "new"}
+            if len(raw) > 1024:
+                raise ValueError("Invalid onboarding state")
+            state = json.loads(raw)
+            if not isinstance(state, dict) or state.get("schema_version") != 1:
+                raise ValueError("Invalid onboarding state")
+            result = {key: state.get(key, "new") for key in ("start", "doc")}
+            if any(value not in ("new", "completed", "dismissed") for value in result.values()):
+                raise ValueError("Invalid onboarding state")
+            return result
+
+    def mark(self, kind, status):
+        import json
+        import os
+        import tempfile
+
+        if kind not in ("start", "doc") or status not in ("completed", "dismissed"):
+            raise ValueError("Invalid onboarding choice")
+        with self.lock:
+            try:
+                state = self.read()
+            except (ValueError, UnicodeError):
+                state = {"start": "new", "doc": "new"}
+            if state[kind] != "completed":
+                state[kind] = status
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            pending = None
+            try:
+                with tempfile.NamedTemporaryFile(
+                    mode="w",
+                    encoding="utf-8",
+                    dir=self.path.parent,
+                    prefix=".onboarding-",
+                    delete=False,
+                ) as stream:
+                    pending = Path(stream.name)
+                    json.dump({"schema_version": 1, **state}, stream)
+                    stream.flush()
+                    os.fsync(stream.fileno())
+                os.replace(pending, self.path)
+            finally:
+                if pending is not None:
+                    pending.unlink(missing_ok=True)
+            return state
+
+
+class UpdateFeed:
+    """Read public release metadata; only the native updater may download/install."""
+
+    def __init__(self, config):
+        import threading
+
+        self.config = config
+        self.lock = threading.Lock()
+        self.cached = None
+        self.checked_at = 0
+
+    @staticmethod
+    def version(value):
+        import re
+
+        if not isinstance(value, str) or not re.fullmatch(
+            r"[0-9]{1,6}\.[0-9]{1,6}\.[0-9]{1,6}", value
+        ):
+            raise ValueError("Invalid release version")
+        return tuple(map(int, value.split(".")))
+
+    def parse(self, raw):
+        from urllib.parse import urlsplit
+        from xml.etree import ElementTree as ET
+
+        if len(raw) > 65536 or b"<!DOCTYPE" in raw.upper() or b"<!ENTITY" in raw.upper():
+            raise ValueError("Invalid update feed")
+        config = self.config
+        current = self.version(config["version"])
+        is_mac = config["platform"] == "macos-arm64"
+        current_order = int(config["build"]) if is_mac else current
+        best_order, latest, valid_entries = current_order, config["version"], 0
+        source = urlsplit(config["feed_url"])
+        ns = "{http://www.andymatuschak.org/xml-namespaces/sparkle}"
+        try:
+            items = ET.fromstring(raw).findall("./channel/item")
+        except ET.ParseError:
+            raise ValueError("Invalid update feed") from None
+        if not items:
+            raise ValueError("Empty update feed")
+        for item in items:
+            entry = item.find("enclosure")
+            if entry is None:
+                continue
+            if not is_mac and entry.get(ns + "os") != "windows-x64":
+                continue
+            target = urlsplit(entry.get("url", ""))
+            if (target.scheme, target.netloc) != (
+                source.scheme,
+                source.netloc,
+            ) or not target.path.startswith("/downloads/"):
+                continue
+            if (
+                target.username
+                or target.password
+                or target.query
+                or target.fragment
+                or not entry.get(ns + "edSignature")
+            ):
+                continue
+            name = entry.get(ns + "shortVersionString", "")
+            try:
+                version = self.version(name)
+                order = int(entry.get(ns + "version", "")) if is_mac else version
+            except (ValueError, TypeError):
+                continue
+            valid_entries += 1
+            if order > best_order and version >= current:
+                best_order, latest = order, name
+        if not valid_entries:
+            raise ValueError("No valid releases in update feed")
+        return {
+            "status": "available" if best_order > current_order else "current",
+            "current_version": config["version"],
+            "latest_version": latest,
+            "platform": config["platform"],
+        }
+
+    def snapshot(self, *, refresh=False):
+        from urllib.parse import urlsplit
+        from urllib.request import HTTPRedirectHandler, Request, build_opener
+
+        class NoRedirect(HTTPRedirectHandler):
+            def redirect_request(self, req, fp, code, msg, headers, newurl):
+                return None
+
+        with self.lock:
+            if not refresh and self.cached is not None and time.monotonic() - self.checked_at < 300:
+                return self.cached
+            config = self.config
+            if not config or config.get("platform") not in ("windows-x64", "macos-arm64"):
+                raise ValueError("Updates are not configured")
+            url = urlsplit(config["feed_url"])
+            if (
+                url.scheme != "https"
+                or not url.hostname
+                or url.username
+                or url.password
+                or url.query
+                or url.fragment
+                or url.path != "/updates/" + config["platform"] + ".xml"
+            ):
+                raise ValueError("Invalid update feed URL")
+            request = Request(
+                config["feed_url"],
+                headers={"Accept": "application/xml", "Cache-Control": "no-cache"},
+            )
+            with build_opener(NoRedirect()).open(request, timeout=5) as response:
+                raw = response.read(65537)
+            self.cached = self.parse(raw)
+            self.checked_at = time.monotonic()
+            return self.cached
+
+
+def frontend_routes(app, port, *, dev=False, dev_pages=None, log_file=None, token=None, native_only=False,
+                    onboarding_path=None, app_update=None):
     from fastapi import Request
     from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, RedirectResponse
     from fastapi.staticfiles import StaticFiles
@@ -89,6 +269,47 @@ def frontend_routes(app, port, *, dev=False, dev_pages=None, log_file=None, toke
     token = token if token is not None else secrets.token_hex(32)
     # Окну приложения (pywebview) запускатель передаёт это через мост, а не через /aira/connection.
     app.state.aira_connection = {"origin": f"http://127.0.0.1:{port}", "sessionToken": token}
+    onboarding = OnboardingStore(onboarding_path)
+    updates = UpdateFeed(app_update)
+
+    @app.get("/aira/onboarding", include_in_schema=False)
+    def read_onboarding(request: Request):
+        if not secrets.compare_digest(request.headers.get("x-aira-session", ""), token):
+            return JSONResponse({"code": "forbidden"}, status_code=403, headers=NO_STORE)
+        try:
+            return JSONResponse(onboarding.read(), headers=NO_STORE)
+        except (OSError, ValueError, UnicodeError):
+            return JSONResponse({"code": "onboarding_unavailable"}, status_code=503, headers=NO_STORE)
+
+    @app.post("/aira/onboarding/{kind}", include_in_schema=False)
+    async def mark_onboarding(kind: str, request: Request):
+        if not secrets.compare_digest(request.headers.get("x-aira-session", ""), token):
+            return JSONResponse({"code": "forbidden"}, status_code=403, headers=NO_STORE)
+        import json
+
+        try:
+            raw = bytearray()
+            async for chunk in request.stream():
+                raw.extend(chunk)
+                if len(raw) > 128:
+                    raise ValueError("Invalid onboarding choice")
+            body = json.loads(raw)
+            if not isinstance(body, dict) or set(body) != {"status"}:
+                raise ValueError("Invalid onboarding choice")
+            return JSONResponse(onboarding.mark(kind, body["status"]), headers=NO_STORE)
+        except (ValueError, UnicodeError, TypeError):
+            return JSONResponse({"code": "invalid_onboarding_choice"}, status_code=422, headers=NO_STORE)
+        except OSError:
+            return JSONResponse({"code": "onboarding_unavailable"}, status_code=503, headers=NO_STORE)
+
+    @app.get("/aira/updates", include_in_schema=False)
+    def read_updates(request: Request):
+        if not secrets.compare_digest(request.headers.get("x-aira-session", ""), token):
+            return JSONResponse({"code": "forbidden"}, status_code=403, headers=NO_STORE)
+        try:
+            return JSONResponse(updates.snapshot(refresh=request.query_params.get("refresh") == "1"), headers=NO_STORE)
+        except Exception:
+            return JSONResponse({"code": "update_check_unavailable"}, status_code=503, headers=NO_STORE)
 
     @app.get("/aira/diagnostics/log", include_in_schema=False)
     def download_log(request: Request):
@@ -182,7 +403,9 @@ def licence_stub_routes(app):
 
 def build_app(*, database_url, runtime_root, port, analysis="model", initialize=True,
               licence_stub=False, dev=False, dev_pages=None, on_ready=None, log_file=None,
-              native_token=None, startup_timeout=60, shutdown_timeout=30):
+              native_token=None, startup_timeout=60, shutdown_timeout=30,
+              model_key_provider=None, startup_progress=None, on_startup_error=None,
+              database_connect_args=None, onboarding_path=None, app_update=None):
     """Возвращает ASGI-приложение. Воркер анализа запускается и останавливается в lifespan."""
     for timeout, limit in ((startup_timeout, 300), (shutdown_timeout, 120)):
         if type(timeout) not in (int, float) or not 0 < timeout <= limit:
@@ -195,29 +418,49 @@ def build_app(*, database_url, runtime_root, port, analysis="model", initialize=
 
     root = private_root(runtime_root)
     settings = DatabaseSettings(database_url)
-    engine = create_engine(settings.database_url.get_secret_value(), hide_parameters=True)
+    engine = create_engine(settings.database_url.get_secret_value(), hide_parameters=True,
+                           connect_args=database_connect_args or {})
     if initialize:
-        init_database(engine)
+        if startup_progress:
+            startup_progress("database")
+        try:
+            init_database(engine)
+        except BaseException:
+            engine.dispose()
+            raise
 
     runtime = DocumentRuntime(engine=engine, user_id=USER, project_id=PROJECT, mode="local")
     if analysis == "model":
         from ara.docx_analysis_worker.supervisor.local_model import create_local_model_supervisor as factory
     else:
         from ara.docx_analysis_worker.supervisor.word_fixture import create_word_fixture_supervisor as factory
-    supervisor = factory(settings=settings, user_id=USER, project_id=PROJECT, installation_id=INSTALL, root=root)
+    if startup_progress:
+        startup_progress("model_package")
+    options = {"model_key_provider": model_key_provider} if analysis == "model" and model_key_provider is not None else {}
+    if startup_progress and analysis == "model":
+        options["startup_checkpoint"] = startup_progress
+    try:
+        supervisor = factory(settings=settings, user_id=USER, project_id=PROJECT, installation_id=INSTALL, root=root, **options)
+    except BaseException:
+        engine.dispose()
+        raise
+    if startup_progress:
+        startup_progress("routes")
     app = create_app(document_runtime=runtime, analysis_supervisor=supervisor, table_editor=True, field_editor=True)
     if licence_stub:
         licence_stub_routes(app)
     frontend_routes(app, port, dev=dev, dev_pages=dev_pages, log_file=log_file,
-                    token=native_token, native_only=native_token is not None)
+                    token=native_token, native_only=native_token is not None,
+                    onboarding_path=onboarding_path, app_update=app_update)
     previous = app.router.lifespan_context
 
     @asynccontextmanager
     async def lifespan(application):
         import anyio
 
-        supervisor.start()
+        started = False
         try:
+            supervisor.start()
             deadline = time.monotonic() + startup_timeout
             while supervisor.view().phase != "ready":
                 view = supervisor.view()
@@ -227,7 +470,12 @@ def build_app(*, database_url, runtime_root, port, analysis="model", initialize=
             if on_ready:
                 on_ready()
             async with previous(application):
+                started = True
                 yield
+        except BaseException as error:
+            if not started and on_startup_error is not None:
+                on_startup_error(error)
+            raise
         finally:
             deadline = time.monotonic() + shutdown_timeout
             while not supervisor.shutdown(timeout=0.1):
@@ -294,3 +542,4 @@ class SupervisorError(RuntimeError):
     def __init__(self, code, view):
         super().__init__(f"Analysis supervisor did not start: {view}")
         self.code = code
+

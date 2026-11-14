@@ -8,9 +8,13 @@ from ara.desktop.access import LicensedApplication
 from ara.licensing.client import ActivationStore, LicenseClient
 
 
-def create_license_client(config_path, store_root):
+def create_license_client(config_path, store_root, model_directory=None):
     """Use the installer's public HTTPS origin, never a profile override."""
     config = json.loads(Path(config_path).read_text(encoding="utf-8-sig"))
+    if model_directory is not None:
+        from ara.model_protection.integration import make_license_client
+
+        return make_license_client(config.get("license_origin", config["origin"]), store_root, model_directory)
     return LicenseClient(config["origin"], ActivationStore(Path(store_root)))
 
 
@@ -71,9 +75,13 @@ class NativeApplication:
         path = scope.get("path", "")
         public = path in {"/aira", "/aira/"} or path.startswith(("/aira/assets/", "/aira/client/"))
         diagnostic = path in {"/aira/diagnostics/log", "/aira/diagnostics/client"}
+        native_settings = path in {
+            "/aira/onboarding", "/aira/onboarding/start", "/aira/onboarding/doc", "/aira/updates"
+        }
         if scope["type"] == "http" and (
-            (scope.get("method") in {"GET", "HEAD"} and public) or diagnostic
+            (scope.get("method") in {"GET", "HEAD"} and public) or diagnostic or native_settings
         ):
             await self.app(scope, receive, send)
             return
         await self.protected(scope, receive, send)
+

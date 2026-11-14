@@ -807,7 +807,15 @@ export class DocEditor {
   }
   scrollToFinding(id) {
     const item = this.highlights.items.find(x => x.id === id);
-    const first = item?.ranges.find(r => this.byKey.has(r.key));
+    return this.scrollToEvidenceRanges(item?.ranges || []);
+  }
+
+  scrollToEvidence(evidence) {
+    return this.scrollToEvidenceRanges(this.evidenceRanges(evidence));
+  }
+
+  scrollToEvidenceRanges(ranges) {
+    const first = ranges.find(r => this.byKey.has(r.key));
     if (!first) return false;
     const el = this.byKey.get(first.key).el;
     el.scrollIntoView({ block: 'center', behavior: 'smooth' });

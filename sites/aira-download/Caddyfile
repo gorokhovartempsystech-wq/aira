@@ -9,7 +9,14 @@ https://51.250.81.70 {
         }
     }
 
-    @license path /license/v1/activate /license/v1/check
+    @license_admin path /license-admin /license-admin/*
+    handle @license_admin {
+        reverse_proxy 127.0.0.1:8767 {
+            header_up X-Forwarded-Proto https
+        }
+    }
+
+    @license path /license/v1/activate /license/v1/check /license/model/v1/challenge /license/model/v1/complete
     handle @license {
         reverse_proxy 127.0.0.1:8766 {
             header_up X-Forwarded-Proto https
@@ -18,7 +25,7 @@ https://51.250.81.70 {
 
     @public {
         method GET HEAD
-        path / /index.html /app.js /styles.css /third-party.txt /favicon.svg /downloads/*.dmg /downloads/*.exe /downloads/*.sha256 /updates/*.xml
+        path / /index.html /app.js /styles.css /third-party.txt /favicon.svg /downloads/*.dmg /downloads/*.exe /downloads/*.sha256 /updates/*.xml /downloads/aira-models-0.2m-protected-1.zip
     }
     handle @public {
         root * /srv/aira-public

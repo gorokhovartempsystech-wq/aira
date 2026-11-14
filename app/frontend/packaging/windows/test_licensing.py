@@ -246,6 +246,12 @@ def launcher(monkeypatch, tmp_path):
     spec = importlib.util.spec_from_loader(loader.name, loader)
     module = importlib.util.module_from_spec(spec)
     loader.exec_module(module)
+    installation = tmp_path / "installation"
+    (installation / "launcher").mkdir(parents=True)
+    (installation / "launcher/release-config.json").write_text(
+        json.dumps({"origin": "https://license.example.test", "license_origin": "https://license.example.test"})
+    )
+    monkeypatch.setattr(module, "APP", installation)
     monkeypatch.setattr(module, "DATA", tmp_path)
     monkeypatch.setattr(module, "STATE", tmp_path / "state.json")
     return module
@@ -321,7 +327,8 @@ def test_license_drain_failure_does_not_report_clean_shutdown(launcher, monkeypa
 
 def test_browser_flag_cannot_open_unlicensed_fallback(launcher, monkeypatch):
     calls = []
-    kernel = SimpleNamespace(CreateMutexW=lambda *args: 1, GetLastError=lambda: 0)
+    kernel = SimpleNamespace(CreateMutexW=lambda *args: 1, GetLastError=lambda: 0,
+                             CloseHandle=lambda *args: calls.append("release-mutex"))
     user = SimpleNamespace(MessageBoxW=lambda *args: calls.append("error"))
     monkeypatch.setattr(
         launcher.ctypes, "windll", SimpleNamespace(kernel32=kernel, user32=user), raising=False
@@ -335,7 +342,7 @@ def test_browser_flag_cannot_open_unlicensed_fallback(launcher, monkeypatch):
     monkeypatch.setattr(launcher, "run_desktop", lambda *args: calls.append("desktop"))
     with pytest.raises(SystemExit) as error:
         launcher.main()
-    assert error.value.code == 1 and calls == ["error"]
+    assert error.value.code == 1 and calls == ["error", "release-mutex"]
 
 
 def test_bridge_does_not_disclose_capability_to_another_page(launcher):
@@ -556,3 +563,4 @@ def test_windows_preserves_two_minute_supervisor_start_and_cleanup_budget(monkey
 
     asyncio.run(cycle())
     assert clock["disposed"] and clock["value"] == 160
+

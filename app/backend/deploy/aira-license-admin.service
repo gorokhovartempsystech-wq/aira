@@ -1,0 +1,23 @@
+[Unit]
+Description=AIRA private license administration
+After=network.target aira-license.service
+
+[Service]
+User=aira-license-admin
+Group=aira-license-admin
+WorkingDirectory=/opt/aira-license-admin/releases/admin-0.1.0/backend
+Environment=HOME=/var/lib/aira-license-admin
+Environment=PYTHONPATH=/opt/aira-license-admin/releases/admin-0.1.0/backend/src
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/opt/aira-license/releases/model-protection-0.2.7/venv/bin/python -m ara.license_admin serve --port 8767
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateDevices=yes
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

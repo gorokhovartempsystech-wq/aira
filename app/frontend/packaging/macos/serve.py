@@ -20,7 +20,8 @@ from aira_host import build_app
 
 from ara.desktop.access import LicensedApplication, new_session_token
 from ara.desktop.data_home import open_home
-from ara.licensing.client import ActivationStore, LicenseClient
+from ara.model_protection.integration import make_license_client
+from ara.model_protection.bundle import configuration
 
 
 class NativeApplication:
@@ -33,7 +34,8 @@ class NativeApplication:
     async def __call__(self, scope, receive, send):
         path = scope.get("path", "")
         if scope["type"] == "http" and (
-            path in {"/aira", "/aira/", "/aira/diagnostics/log", "/aira/diagnostics/client"}
+            path in {"/aira", "/aira/", "/aira/diagnostics/log", "/aira/diagnostics/client",
+                     "/aira/onboarding", "/aira/onboarding/start", "/aira/onboarding/doc", "/aira/updates"}
             or path.startswith(("/aira/assets/", "/aira/client/"))
         ):
             await self.app(scope, receive, send)
@@ -69,7 +71,8 @@ def serve(data, license_origin, handshake):
     user = getpwuid(os.getuid()).pw_name
     client = None
     try:
-        client = LicenseClient(license_origin, ActivationStore(home.path("license")))
+        models = PAYLOAD / "app/backend/ml_bundle/models"
+        client = make_license_client(license_origin, home.path("license"), models)
         if not cluster.exists():
             with tempfile.TemporaryDirectory(dir=postgres) as staging:
                 initialized = Path(staging) / "cluster"
@@ -98,7 +101,9 @@ def serve(data, license_origin, handshake):
                     token = new_session_token()
                     app = build_app(database_url=url.render_as_string(hide_password=False),
                                     runtime_root=home.path("analysis"), port=http_port,
-                                    analysis="model", native_token=token.hex(), log_file=data / "aira.log")
+                                    onboarding_path=data / "onboarding.json", app_update=update_configuration(),
+                                    analysis="model", native_token=token.hex(), log_file=data / "aira.log",
+                                    model_key_provider=client.require_model_key if configuration(models) else None)
                     client.start()
                     config = uvicorn.Config(NativeApplication(app, client, origin, token),
                                             host="127.0.0.1", port=http_port, proxy_headers=False,
@@ -108,11 +113,19 @@ def serve(data, license_origin, handshake):
                 if started:
                     run_pg(pg, "pg_ctl", "-D", cluster, "-w", "-t", 25, "-m", "fast", "stop")
     finally:
-        try:
-            if client is not None:
-                client.shutdown(timeout=5)
-        finally:
-            home.close()
+        if client is not None and not client.shutdown(timeout=5):
+            raise RuntimeError("License cleanup was not confirmed")
+        if not home.close():
+            raise RuntimeError("Data home cleanup was not confirmed")
+
+
+def update_configuration():
+    import plistlib
+
+    with (PAYLOAD.parent.parent / "Info.plist").open("rb") as stream:
+        info = plistlib.load(stream)
+    return {"feed_url": info["SUFeedURL"], "version": info["CFBundleShortVersionString"],
+            "build": info["CFBundleVersion"], "platform": "macos-arm64"}
 
 
 def main():

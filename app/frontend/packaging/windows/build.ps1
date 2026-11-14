@@ -10,7 +10,7 @@ param(
   [string]$PgDir = "$env:USERPROFILE\AIRA-dev\pgsql",
   [string]$Python = "$env:LOCALAPPDATA\Programs\Python\Python312",
   [string]$Out = "$env:USERPROFILE\AIRA-dev\build",
-  [string]$Version = '0.2.7',
+  [string]$Version = '0.2.8',
   [Parameter(Mandatory=$true)][string]$WinSparkleDir,
   [string]$Iscc = "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe",
   [switch]$NoModel,
@@ -32,6 +32,12 @@ function Copy-Tree($from, $to, [string[]]$excludeDirs = @(), [string[]]$excludeF
 foreach ($p in @($py, (Join-Path $PgDir 'bin\postgres.exe'))) { if (-not (Test-Path $p)) { throw "Not found: $p" } }
 if (-not $NoModel -and -not (Test-Path (Join-Path $ModelDir 'manifest.json'))) { throw "Model manifest not found in $ModelDir (or use -NoModel)" }
 if (-not (Test-Path (Join-Path $WinSparkleDir 'x64\Release\WinSparkle.dll'))) { throw 'Verified WinSparkle 0.9.4 distribution required' }
+if ($NoModel -and -not $StageOnly) { throw 'NoModel is allowed only for development staging, not a release installer' }
+if (-not $NoModel) {
+  $manifest = Get-Content (Join-Path $ModelDir 'manifest.json') -Raw | ConvertFrom-Json
+  if ($manifest.protection.format -ne 'aira-model/1') { throw 'A protected model bundle is required for release builds' }
+  if (@(Get-ChildItem $ModelDir -Recurse -Filter '*.onnx').Count) { throw 'Plaintext model files must not enter the installer' }
+}
 if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
 New-Item -ItemType Directory -Force $stage | Out-Null
 
@@ -62,6 +68,7 @@ Copy-Tree (Join-Path $repo 'app\frontend\static') "$stage\app\frontend\static"
 Copy-Item (Join-Path $repo 'app\frontend\aira_host.py') "$stage\app\frontend\aira_host.py"
 New-Item -ItemType Directory -Force "$stage\launcher" | Out-Null
 Copy-Item (Join-Path $here 'aira_launcher.pyw') "$stage\launcher\aira_launcher.pyw"
+Copy-Item (Join-Path $here 'aira_startup.py') "$stage\launcher\aira_startup.py"
 Copy-Item (Join-Path $here 'aira_updates.py') "$stage\launcher\aira_updates.py"
 Copy-Item (Join-Path $here 'aira_licensed_app.py') "$stage\launcher\aira_licensed_app.py"
 Copy-Item (Join-Path $here '..\updates\release-config.json') "$stage\launcher\release-config.json"
@@ -91,3 +98,4 @@ if (-not (Test-Path $Iscc)) { throw "Inno Setup not found: $Iscc" }
 & $Iscc /Q "/DSourceDir=$stage" "/DAppVersion=$Version" "/O$Out" (Join-Path $here 'aira.iss')
 if ($LASTEXITCODE) { throw 'ISCC failed' }
 Get-Item (Join-Path $Out "AIRA-Setup-$Version.exe") | Select-Object FullName, @{n = 'MB'; e = { [math]::Round($_.Length / 1MB) } }
+
