@@ -12,6 +12,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from urllib.request import urlopen
 
+from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
 
@@ -22,17 +23,23 @@ WORKFLOW = REPOSITORY + "/.github/workflows/site-deploy.yml@refs/heads/main"
 ISSUER = "https://token.actions.githubusercontent.com"
 ORIGIN = "https://51.250.81.70"
 ENDPOINT = "/_deploy/site"
-FILES = frozenset(("index.html", "styles.css", "app.js", "favicon.svg", "third-party.txt"))
+FILES = frozenset(
+    ("index.html", "styles.css", "app.js", "favicon.svg", "third-party.txt")
+)
 MAX_BODY = 1024 * 1024
 ROOT = Path("/var/lib/aira-site-deploy")
 
 
 def unbase(value):
-    return base64.b64decode(value + "=" * (-len(value) % 4), altchars=b"-_", validate=True)
+    return base64.b64decode(
+        value + "=" * (-len(value) % 4), altchars=b"-_", validate=True
+    )
 
 
 class Verifier:
-    def __init__(self):
+    def __init__(self, *, workflow=WORKFLOW, audience=ORIGIN + ENDPOINT):
+        self.workflow = workflow
+        self.audience = audience
         self.keys = {}
         self.fetched = 0
 
@@ -68,13 +75,13 @@ class Verifier:
         )
         expected = {
             "iss": ISSUER,
-            "aud": ORIGIN + ENDPOINT,
+            "aud": self.audience,
             "repository": REPOSITORY,
             "repository_id": REPOSITORY_ID,
             "repository_owner_id": OWNER_ID,
             "ref": "refs/heads/main",
             "ref_type": "branch",
-            "workflow_ref": WORKFLOW,
+            "workflow_ref": self.workflow,
             "runner_environment": "github-hosted",
         }
         if any(claims.get(key) != value for key, value in expected.items()):
@@ -90,7 +97,8 @@ class Verifier:
         if not re.fullmatch(r"[0-9a-f]{40}", claims.get("sha", "")):
             raise ValueError("commit")
         if not all(
-            re.fullmatch(r"[1-9][0-9]{0,19}", claims.get(k, "")) for k in ("run_id", "run_attempt")
+            re.fullmatch(r"[1-9][0-9]{0,19}", claims.get(k, ""))
+            for k in ("run_id", "run_attempt")
         ):
             raise ValueError("run")
         return claims
@@ -102,10 +110,15 @@ def publish(root, document, claims):
     files = document["files"]
     if not isinstance(files, dict) or set(files) != FILES:
         raise ValueError("file allowlist")
-    if not all(isinstance(v, str) and v and len(v.encode()) <= 256 * 1024 for v in files.values()):
+    if not all(
+        isinstance(v, str) and v and len(v.encode()) <= 256 * 1024
+        for v in files.values()
+    ):
         raise ValueError("file size")
     encoded = {name: value.encode() for name, value in files.items()}
-    digests = {name: hashlib.sha256(value).hexdigest() for name, value in encoded.items()}
+    digests = {
+        name: hashlib.sha256(value).hexdigest() for name, value in encoded.items()
+    }
     run = [int(claims[k]) for k in ("run_id", "run_attempt")]
     current = root / "current"
     if current.exists():
@@ -166,7 +179,14 @@ class Handler(BaseHTTPRequestHandler):
             if not authorization.startswith("Bearer "):
                 raise ValueError("missing token")
             claims = self.verifier.verify(authorization[7:])
-        except Exception:
+        except (
+            OSError,
+            ValueError,
+            KeyError,
+            TypeError,
+            AttributeError,
+            InvalidSignature,
+        ):
             self.respond(401, {"error": "unauthorized"})
             return
         try:
@@ -185,7 +205,7 @@ class Handler(BaseHTTPRequestHandler):
         except (ValueError, TypeError, KeyError):
             self.respond(400, {"error": "invalid deployment"})
             return
-        except Exception:
+        except (OSError, RuntimeError):
             self.respond(500, {"error": "publication failed"})
             return
         self.respond(200, result)

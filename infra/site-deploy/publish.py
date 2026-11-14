@@ -45,7 +45,9 @@ def payload():
 
 def main(argv=None):
     parser = argparse.ArgumentParser()
-    parser.add_argument("--check", action="store_true", help="Validate files without publishing")
+    parser.add_argument(
+        "--check", action="store_true", help="Validate files without publishing"
+    )
     arguments = parser.parse_args(argv)
     document = payload()
     if arguments.check or os.environ.get("GITHUB_EVENT_NAME") == "pull_request":
@@ -54,8 +56,12 @@ def main(argv=None):
     if os.environ.get("GITHUB_REF") != "refs/heads/main":
         raise SystemExit("Publication is restricted to main.")
     request = Request(
-        os.environ["ACTIONS_ID_TOKEN_REQUEST_URL"] + "&" + urlencode({"audience": ENDPOINT}),
-        headers={"Authorization": "Bearer " + os.environ["ACTIONS_ID_TOKEN_REQUEST_TOKEN"]},
+        os.environ["ACTIONS_ID_TOKEN_REQUEST_URL"]
+        + "&"
+        + urlencode({"audience": ENDPOINT}),
+        headers={
+            "Authorization": "Bearer " + os.environ["ACTIONS_ID_TOKEN_REQUEST_TOKEN"]
+        },
     )
     with urlopen(request, timeout=20) as response:
         token = json.load(response)["value"]
@@ -63,7 +69,10 @@ def main(argv=None):
         ENDPOINT,
         data=json.dumps(document).encode(),
         method="POST",
-        headers={"Authorization": "Bearer " + token, "Content-Type": "application/json"},
+        headers={
+            "Authorization": "Bearer " + token,
+            "Content-Type": "application/json",
+        },
     )
     with urlopen(request, timeout=60) as response:
         receipt = json.load(response)
@@ -83,6 +92,13 @@ def main(argv=None):
 if __name__ == "__main__":
     try:
         main()
-    except Exception as error:
+    except (
+        OSError,
+        ValueError,
+        KeyError,
+        TypeError,
+        RuntimeError,
+        subprocess.SubprocessError,
+    ) as error:
         # urllib exceptions can contain request details. Never print tokens.
         raise SystemExit("Site publication failed: " + type(error).__name__) from None
