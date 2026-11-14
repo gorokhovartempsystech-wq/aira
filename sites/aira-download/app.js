@@ -40,8 +40,8 @@ const messages = {
       "У пилотного Windows-установщика пока нет подписи издателя: SmartScreen может показать предупреждение о неизвестном приложении.",
       "На Mac откройте скачанный образ и перенесите AIRA в «Программы». Если AIRA уже установлена, закройте её перед заменой.",
       "Ключ вводится один раз, при активации. При следующих запусках лицензия проверяется автоматически через интернет; повторно вводить действующий ключ не нужно.",
-      "Mac 0.2.7 проверяет обновления и загружает их автоматически. Установка завершается после сохранения правок и закрытия AIRA. Версии 0.2.4 и ниже нужно один раз заменить вручную из-за переезда сервера.",
-      "Windows 0.2.8 проверяет обновления при запуске и предлагает установить новую версию. С версии 0.2.0 нужно один раз обновиться вручную.",
+      "Сборки Mac проверяют обновления и загружает их автоматически. Установка завершается после сохранения правок и закрытия AIRA. Версии 0.2.4 и ниже нужно один раз заменить вручную из-за переезда сервера.",
+      "Сборки Windows проверяют обновления при запуске и предлагает установить новую версию. С версии 0.2.0 нужно один раз обновиться вручную.",
       "После обновления до 0.2.7 нужно один раз повторно ввести ключ активации. Следующие запуски — автоматически, с проверкой лицензии через интернет.",
       "У Mac-сборки пока нет подписи Developer ID и проверки Apple, поэтому macOS может заблокировать первое открытие. Это ограничение текущей сборки; автоматическое обновление его не устраняет.",
       "Сборки для Intel Mac и Windows ARM не опубликованы. Минимальный объём оперативной памяти пока не установлен испытаниями.",
@@ -132,3 +132,41 @@ document.documentElement.addEventListener("pointerleave", () => {
   artwork.style.setProperty("--pointer-y", "0px");
 });
 
+
+// Published installers are independent of the HTML deployment.
+function planReleaseLinks(data) {
+  if (!data || data.schema !== 1 || !data.platforms) throw new Error("Invalid release metadata");
+  return ["windows-x64", "macos-arm64"].map((platform) => {
+    const record = data.platforms[platform];
+    if (!record || !/^[0-9]+\.[0-9]+\.[0-9]+$/.test(record.version)
+        || !Number.isSafeInteger(record.bytes) || record.bytes < 1 || record.bytes > 2 * 1024 ** 3
+        || !/^[0-9a-f]{64}$/.test(record.sha256)) throw new Error("Invalid installer metadata");
+    const windows = platform === "windows-x64";
+    const filename = windows ? `AIRA-Setup-${record.version}.exe` : `AIRA-${record.version}-apple-silicon.dmg`;
+    const url = "https://51.250.81.70/downloads/" + filename;
+    if (record.filename !== filename || record.url !== url) throw new Error("Unexpected installer URL");
+    return {
+      button: windows ? ".windows-button" : ".mac-button",
+      note: windows ? "#release-note" : "#mac-release-note",
+      url,
+      text: `${windows ? "Windows 10/11 (64 бита)" : "macOS 14+ · Apple Silicon"} · ${record.version} · ${Math.ceil(record.bytes / 1000000)} МБ`,
+    };
+  });
+}
+
+async function refreshReleasedVersions() {
+  const response = await fetch("https://51.250.81.70/updates/releases.json", {
+    cache: "no-store", signal: AbortSignal.timeout(5000),
+  });
+  if (!response.ok) return;
+  const planned = planReleaseLinks(await response.json());
+  for (const item of planned) {
+    const button = document.querySelector(item.button);
+    const note = document.querySelector(item.note);
+    if (!button || !note) continue;
+    button.href = item.url;
+    const dot = note.querySelector(".status-dot");
+    note.replaceChildren(...(dot ? [dot] : []), document.createTextNode(item.text));
+  }
+}
+refreshReleasedVersions().catch(() => {});

@@ -32,7 +32,9 @@ def unbase(value):
 
 
 class Verifier:
-    def __init__(self):
+    def __init__(self, *, workflow=WORKFLOW, audience=ORIGIN + ENDPOINT):
+        self.workflow = workflow
+        self.audience = audience
         self.keys = {}
         self.fetched = 0
 
@@ -68,13 +70,13 @@ class Verifier:
         )
         expected = {
             "iss": ISSUER,
-            "aud": ORIGIN + ENDPOINT,
+            "aud": self.audience,
             "repository": REPOSITORY,
             "repository_id": REPOSITORY_ID,
             "repository_owner_id": OWNER_ID,
             "ref": "refs/heads/main",
             "ref_type": "branch",
-            "workflow_ref": WORKFLOW,
+            "workflow_ref": self.workflow,
             "runner_environment": "github-hosted",
         }
         if any(claims.get(key) != value for key, value in expected.items()):

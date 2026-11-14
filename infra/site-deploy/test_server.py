@@ -62,6 +62,16 @@ class DeploymentTests(unittest.TestCase):
     def test_valid_main_token(self):
         self.assertEqual(self.verifier.verify(self.token(), now=1100), self.claims)
 
+    def test_separate_publishers_require_their_own_workflow_and_audience(self):
+        verifier = server.Verifier(workflow="other/main-workflow", audience="other-service")
+        verifier.key = self.verifier.key
+        with self.assertRaises(ValueError):
+            verifier.verify(self.token(), now=1100)
+        claims = {**self.claims, "workflow_ref": "other/main-workflow", "aud": "other-service"}
+        self.assertEqual(verifier.verify(self.token(claims), now=1100), claims)
+        with self.assertRaises(ValueError):
+            self.verifier.verify(self.token(claims), now=1100)
+
     def test_identity_and_lifetime_restrictions(self):
         invalid = {
             "iss": "https://attacker.invalid",
