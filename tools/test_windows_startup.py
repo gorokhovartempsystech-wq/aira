@@ -9,6 +9,8 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / 'app/backend/src'))
+sys.path.insert(0, str(ROOT / 'app/frontend'))
 path = ROOT / 'app/frontend/packaging/windows/aira_startup.py'
 spec = importlib.util.spec_from_file_location('aira_startup', path)
 startup = importlib.util.module_from_spec(spec)
@@ -30,7 +32,6 @@ class Startup(unittest.TestCase):
     def test_real_uvicorn_lifespan_failure_retains_recovery_reason(self):
         import uvicorn
         from fastapi import FastAPI
-        sys.path.insert(0, str(ROOT / 'app/frontend'))
         import aira_host
         from ara.config import DatabaseSettings
         captured = []
