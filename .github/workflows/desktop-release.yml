@@ -50,8 +50,43 @@ jobs:
       - name: Require current protected packaging source
         run: python infra/desktop-release/prepare.py check "$RUNNER_TEMP/release-policy"
 
-  windows:
+  inputs:
     needs: verify
+    runs-on: macos-26
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+      - name: Download and verify immutable runtime inputs once
+        run: python -u infra/desktop-release/prepare.py inputs "$RUNNER_TEMP/aira-release"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: input-models
+          path: ${{ runner.temp }}/aira-release/aira-models-0.2m-protected-1.zip
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 1
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: input-windows-runtime
+          path: ${{ runner.temp }}/aira-release/AIRA-Setup-0.2.0.exe
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 1
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: input-macos-runtime
+          path: ${{ runner.temp }}/aira-release/AIRA-0.2.7-apple-silicon.dmg
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 1
+
+  windows:
+    needs: [verify, inputs]
     runs-on: windows-latest
     timeout-minutes: 60
     steps:
@@ -67,12 +102,21 @@ jobs:
           python -m pytest --noconftest -q
           app/frontend/packaging/windows/test_licensing.py
           app/frontend/tests
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: input-models
+          path: ${{ runner.temp }}/aira-release
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: input-windows-runtime
+          path: ${{ runner.temp }}/aira-release
       - name: Build, install and test Windows package
         shell: pwsh
         run: '& infra/desktop-release/build_windows.ps1'
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: release-windows-x64
+          compression-level: 0
           path: |
             ${{ runner.temp }}/aira-release/release/*.exe
             ${{ runner.temp }}/aira-release/release/windows-x64.json
@@ -80,7 +124,7 @@ jobs:
           retention-days: 7
 
   macos:
-    needs: verify
+    needs: [verify, inputs]
     runs-on: macos-26
     timeout-minutes: 75
     steps:
@@ -96,11 +140,20 @@ jobs:
           python -m pytest --noconftest -q
           app/frontend/packaging/windows/test_licensing.py
           app/frontend/tests
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: input-models
+          path: ${{ runner.temp }}/aira-release
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: input-macos-runtime
+          path: ${{ runner.temp }}/aira-release
       - name: Build Mac package, run full backend gate and test installed runtime
-        run: python infra/desktop-release/build_macos.py
+        run: python -u infra/desktop-release/build_macos.py
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: release-macos-arm64
+          compression-level: 0
           path: |
             ${{ runner.temp }}/aira-release/release/*.dmg
             ${{ runner.temp }}/aira-release/release/macos-arm64.json

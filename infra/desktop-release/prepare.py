@@ -7,6 +7,7 @@ import zipfile
 from pathlib import Path
 
 from common import (
+    PINS,
     build_for_run,
     download_pin,
     require_source,
@@ -17,7 +18,9 @@ from common import (
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("platform", choices=["windows-x64", "macos-arm64", "check"])
+    parser.add_argument(
+        "platform", choices=["windows-x64", "macos-arm64", "check", "inputs"]
+    )
     parser.add_argument("work", type=Path)
     args = parser.parse_args()
     require_source(Path.cwd())
@@ -31,6 +34,10 @@ def main():
         with open(os.environ["GITHUB_OUTPUT"], "a") as output:
             output.write(f"version={version}\nbuild={build}\n")
     if args.platform == "check":
+        return
+    if args.platform == "inputs":
+        for kind in PINS:
+            download_pin(kind, args.work)
         return
     archive = download_pin("models", args.work)
     destination = args.work / "model"

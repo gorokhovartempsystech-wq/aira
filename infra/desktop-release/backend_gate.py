@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import shlex
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -14,6 +15,9 @@ def main():
     root = Path("app/backend").resolve()
     runtime = root / ".runtime"
     runtime.mkdir(mode=0o700)
+    fixture_runtime = runtime / "Postgres.app/Contents/Versions/18"
+    fixture_runtime.parent.mkdir(parents=True)
+    shutil.copytree(binaries.parent, fixture_runtime, symlinks=True)
     cluster = runtime / "postgres18"
     cluster.mkdir(mode=0o700)
     identity = {"project": str(root), "uid": os.getuid(), "major": 18}
@@ -81,6 +85,20 @@ def main():
                 "--system-site-packages",
                 str(root / ".venv"),
             ],
+            check=True,
+        )
+        # Catch native fixture setup failures before the full, unchanged gate.
+        subprocess.run(
+            [
+                str(root / ".venv/bin/python"),
+                "-m",
+                "pytest",
+                "-q",
+                "tests/acceptance/test_desktop_postgres_profile_native.py",
+                "tests/acceptance/test_desktop_postgres_cluster.py::"
+                "test_first_run_and_reopen_keep_identity_and_committed_data",
+            ],
+            cwd=root,
             check=True,
         )
         subprocess.run(["bash", "scripts/check.sh"], cwd=root, check=True)

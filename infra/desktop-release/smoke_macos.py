@@ -43,6 +43,7 @@ def main():
             )
             payload = app / "Contents/Resources/payload"
             profile = root / "profile"
+            profile.mkdir()
             for _ in range(2):
                 with (root / "runtime.log").open("ab") as log:
                     child = subprocess.Popen(

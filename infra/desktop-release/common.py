@@ -56,6 +56,12 @@ def download_pin(kind, destination):
     name, expected = PINS[kind]
     target = Path(destination) / name
     target.parent.mkdir(parents=True, exist_ok=True)
+    if target.exists():
+        if digest(target) != expected:
+            raise ValueError("transferred build input checksum mismatch")
+        print("Verified transferred build input " + name, flush=True)
+        return target
+    print("Downloading pinned build input " + name, flush=True)
     temporary = target.with_suffix(target.suffix + ".partial")
     try:
         with urlopen(ORIGIN + "/downloads/" + name, timeout=600) as response:
