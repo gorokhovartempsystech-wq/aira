@@ -7,6 +7,7 @@ from ara.docx_analysis.visible_inline_images._media import Media
 from ara.docx_analysis.visible_notes._coverage import package_coverage
 
 from . import _appearance
+from ._fonts import font_table
 from ._roles import (
     BASE,
     CUSTOM_PROPS,
@@ -98,9 +99,8 @@ def bibliography(source, roots):
 
 def auxiliary(source, prepared):
     roots = {p.part_name: p.root for p in prepared.view.parts}
-    accounted = {}
+    accounted = font_table(source, roots)
     for suffix, mime, proof in (
-        ("fontTable", BASE + "fontTable+xml", _appearance.fonts),
         ("webSettings", BASE + "webSettings+xml", _appearance.web),
         ("theme", THEME, _appearance.theme),
     ):

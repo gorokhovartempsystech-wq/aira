@@ -33,7 +33,7 @@ class Grammar(StyleGrammar):
         return super().property_names(kind) | (
             {"contextualSpacing", "tabs", "pBdr"}
             if kind == "pPr"
-            else {"kern", "spacing", "noProof"}
+            else {"kern", "spacing", "noProof", "rtl"}
         )
 
     def properties(self, node, kind):
@@ -53,6 +53,10 @@ class Grammar(StyleGrammar):
                     self.leaf(child)
                     self.attrs(child, {"val"})
                     boolean(self.attr(child, "val"))
+                elif self.name(child) == "rtl":
+                    self.leaf(child)
+                    self.attrs(child, {"val"})
+                    check(not boolean(self.attr(child, "val")))
         if kind == "pPr":
             for child in node:
                 if self.name(child) == "contextualSpacing":
