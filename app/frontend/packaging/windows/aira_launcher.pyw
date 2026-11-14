@@ -214,6 +214,17 @@ def clear_stuck_run(pg_port, run_id):
 
 
 # ---------- сервер ----------
+def configure_static_types():
+    # Windows registry can classify .mjs as text/plain. WebView2 then refuses
+    # module execution and the page remains at the initial startup screen.
+    # Initialize OS associations first, then explicitly override our scripts.
+    import mimetypes
+
+    mimetypes.init()
+    for extension in (".mjs", ".js"):
+        mimetypes.add_type("text/javascript", extension)
+
+
 class Server:
     def __init__(self):
         self.server = self.thread = self.url = self.connection = None
@@ -221,6 +232,7 @@ class Server:
         self.error = None
 
     def start(self, pg_port, say):
+        configure_static_types()
         sys.executable = str(PY / "python.exe")  # воркер анализа — обычный python.exe (запускается без окна)
         sys.path.insert(0, str(FRONTEND))
         import uvicorn
@@ -464,8 +476,6 @@ def run_desktop(log):
                 for relative in ("assets/js/main.mjs", "assets/js/host.mjs", "client/document-workspace.mjs"):
                     with urlopen(url + relative, timeout=5) as response:
                         print("selftest resource:", relative, response.status, response.headers.get("Content-Type"), flush=True)
-                diagnostic = window.evaluate_js("(async () => { try { await import('./assets/js/main.mjs'); return 'module import completed'; } catch (e) { return String(e); } })()")
-                print("selftest module:", diagnostic, flush=True)
                 window.destroy()
         except Exception as e:  # noqa: BLE001
             traceback.print_exc()

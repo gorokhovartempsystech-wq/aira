@@ -51,6 +51,8 @@ jobs:
         shell: pwsh
         run: |
           $work = Join-Path $env:RUNNER_TEMP 'aira-build'
+          python tools/test_windows_launcher.py
+          if ($LASTEXITCODE) { throw 'Windows static module regression failed' }
           python tools/smoke_windows_desktop.py "$work\release\stage"
           if ($LASTEXITCODE) { throw 'Staged desktop smoke failed' }
       - name: Build installer from tested staging
