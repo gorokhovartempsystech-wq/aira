@@ -61,7 +61,7 @@ function draw(rows, more) {
     const row = document.createElement('tr');
     const label = cell(license.label);
     const identifier = document.createElement('span');
-    identifier.className = 'identifier'; identifier.textContent = 'ID ' + license.id.slice(-8); label.append(identifier);
+    identifier.className = 'identifier'; identifier.textContent = 'Выдана ' + date(license.created_at_ms) + ' · ID ' + license.id.slice(-8); label.append(identifier);
     const state = cell(''); const badge = document.createElement('span');
     badge.className = 'badge ' + license.status; badge.textContent = STATUS[license.status] || 'Неизвестно'; state.append(badge);
     const action = cell(''); const button = document.createElement('button');
