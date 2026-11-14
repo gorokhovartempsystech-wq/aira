@@ -272,6 +272,8 @@ def test_public_assets_have_explicit_types_and_no_inline_scripts(panel):
     with TestClient(create_app(s), base_url=ORIGIN) as client:
         page = client.get("/license-admin/")
         assert page.status_code == 200 and '<script src="./admin.js" defer>' in page.text
+        assert '<form id="login-form" method="post" action="./api/login">' in page.text
+        assert '<form id="issue-form" method="post" action="./api/issue">' in page.text
         assert "unsafe-inline" not in page.headers["content-security-policy"]
         assert (
             client.get("/license-admin/admin.js")
