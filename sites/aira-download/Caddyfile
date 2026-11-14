@@ -9,6 +9,13 @@ https://51.250.81.70 {
         }
     }
 
+    @license_admin path /license-admin /license-admin/*
+    handle @license_admin {
+        reverse_proxy 127.0.0.1:8767 {
+            header_up X-Forwarded-Proto https
+        }
+    }
+
     @license path /license/v1/activate /license/v1/check /license/model/v1/challenge /license/model/v1/complete
     handle @license {
         reverse_proxy 127.0.0.1:8766 {

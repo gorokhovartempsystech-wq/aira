@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Лицензии AIRA</title>
+  <link rel="stylesheet" href="./admin.css">
+  <script src="./admin.js" defer></script>
+</head>
+<body>
+  <header class="header"><a class="brand" href="./"><span class="brand-mark" aria-hidden="true">✦</span> AIRA <span class="brand-section">/ лицензии</span></a><button id="logout" class="quiet" hidden>Выйти</button></header>
+  <main>
+    <section id="login-panel" class="login-card">
+      <p class="eyebrow">ПАНЕЛЬ КОМАНДЫ</p>
+      <h1>Выдавайте доступ<br>без лишних шагов.</h1>
+      <p class="muted">Войдите, чтобы создать ключ или проверить лицензию.</p>
+      <form id="login-form">
+        <label>Логин<input name="username" autocomplete="username" value="admin" maxlength="32" required></label>
+        <label>Пароль<input name="password" type="password" autocomplete="current-password" maxlength="256" required></label>
+        <button class="primary" id="login-button">Войти</button>
+      </form>
+      <p id="login-message" class="message" role="status">Проверяем вход…</p>
+    </section>
+
+    <section id="workspace" hidden>
+      <div class="page-heading"><div><p class="eyebrow">УПРАВЛЕНИЕ ДОСТУПОМ</p><h1>Лицензии</h1><p class="muted">Один ключ — одно устройство. Срок начинается с первой активации.</p></div><button id="refresh" class="secondary">Обновить список</button></div>
+      <div class="columns">
+        <section class="card issue-card">
+          <div class="step">01 / ВЫДАЧА</div><h2>Новый ключ</h2>
+          <form id="issue-form">
+            <label>Кому выдаём<input name="label" maxlength="120" placeholder="Например, пилот компании X" autocomplete="off" required></label>
+            <label>Срок после активации<div class="days-field"><input name="days" type="number" min="1" max="36500" step="1" value="30" required><span>дней</span></div></label>
+            <p class="hint">До активации отсчёт не идёт. Новый ключ появится после подтверждения сервера.</p>
+            <button id="issue-button" class="primary">Создать ключ</button>
+          </form>
+          <p id="issue-message" class="message" role="status"></p>
+        </section>
+        <section class="card list-card">
+          <div class="list-heading"><div><div class="step">02 / УЧЁТ</div><h2>Выданные лицензии</h2></div><span id="list-count" class="count"></span></div>
+          <p id="list-message" class="message" role="status"></p>
+          <div class="table-scroll"><table><thead><tr><th>Получатель</th><th>Статус</th><th>Срок</th><th>Действует до</th><th><span class="sr-only">Действия</span></th></tr></thead><tbody id="license-list"></tbody></table></div>
+          <p id="empty" class="empty" hidden>Пока ни одной лицензии. Первый ключ можно создать слева.</p>
+          <div class="pagination"><button id="previous" class="quiet" disabled>← Назад</button><span id="page-label"></span><button id="next" class="quiet" disabled>Далее →</button></div>
+          <p class="hint">Отключение учитывается при следующей проверке лицензии в приложении. Уже открытая AIRA не закрывается принудительно.</p>
+        </section>
+      </div>
+      <p class="footer-note">Ключи отображаются только при выдаче. Пароли и ключи не записываются в журнал действий.</p>
+    </section>
+  </main>
+  <dialog id="key-dialog" aria-labelledby="key-heading">
+    <p class="eyebrow">ДОСТУП ГОТОВ</p><h2 id="key-heading">Сохраните ключ</h2><p id="key-description" class="muted"></p>
+    <label>Лицензионный ключ<textarea id="issued-key" readonly rows="2" spellcheck="false" autocomplete="off"></textarea></label>
+    <button id="copy-key" class="primary">Скопировать ключ</button><p id="copy-message" class="message" role="status"></p>
+    <p class="hint">Повторно посмотреть полный ключ нельзя. Передайте его получателю и только затем закройте это окно.</p>
+    <button id="close-key" class="secondary">Ключ сохранён</button>
+  </dialog>
+  <dialog id="disable-dialog" aria-labelledby="disable-heading"><p class="eyebrow">ОТКЛЮЧЕНИЕ ДОСТУПА</p><h2 id="disable-heading">Отключить лицензию?</h2><p id="disable-description" class="muted"></p><p class="hint">Следующая проверка лицензии откажет в доступе. Документы пользователя не удаляются.</p><div class="dialog-actions"><button id="cancel-disable" class="secondary">Отмена</button><button id="confirm-disable" class="danger">Отключить</button></div></dialog>
+</body>
+</html>
