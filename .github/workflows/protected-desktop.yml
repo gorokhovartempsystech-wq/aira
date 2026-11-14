@@ -14,6 +14,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Verify frontend close confirmation before packaging
+        shell: pwsh
+        run: node tools/test_windows_close.mjs
       - name: Verified protected model and existing PostgreSQL distribution
         timeout-minutes: 15
         shell: pwsh

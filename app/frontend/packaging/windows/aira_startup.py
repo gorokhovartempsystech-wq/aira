@@ -74,3 +74,43 @@ def wait_started(server, thread, error, progress, *, clock=time.monotonic, sleep
             server.should_exit = True
             raise
         sleep(0.1)
+
+
+def request_window_close(window, closed, result, error):
+    """Finish the JS evaluation before destroying its WebView; refuse non-boolean answers."""
+    from threading import Event, Thread
+
+    answered = Event()
+    response = []
+
+    def receive(value):
+        response.append(value)
+        answered.set()
+
+    def request():
+        try:
+            # pywebview's promise callback is one-way. A js_api method instead
+            # sends an RPC reply *after* our method returns, possibly after Close.
+            window.evaluate_js(
+                # No bridge yet means the startup/error splash has no editor.
+                "Promise.resolve().then(() => window.__airaRequestClose ? window.__airaRequestClose() : true)",
+                callback=receive,
+            )
+            while not answered.wait(0.1):
+                if closed.is_set():
+                    return
+            if closed.is_set():
+                return
+            accepted = response[0] is True
+            result(accepted)
+            if accepted:
+                window.destroy()
+        except Exception as exc:
+            if not closed.is_set():
+                error(exc)
+
+    # Joining a non-daemon thread before Python finalization keeps CLR callbacks
+    # from trying to construct exception types after the interpreter is gone.
+    thread = Thread(target=request, name="aira-close", daemon=False)
+    thread.start()
+    return thread

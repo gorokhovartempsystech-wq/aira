@@ -18,6 +18,88 @@ spec.loader.exec_module(startup)
 
 
 class Startup(unittest.TestCase):
+    def test_close_never_destroys_webview_before_js_evaluation_returns(self):
+        entered, release, destroyed, closed = (threading.Event() for _ in range(4))
+        answers, errors = [], []
+        def evaluate(script, callback):
+            callback(True)
+            entered.set()
+            release.wait(2)
+        thread = startup.request_window_close(SimpleNamespace(evaluate_js=evaluate, destroy=destroyed.set),
+                                              closed, answers.append, errors.append)
+        try:
+            self.assertTrue(entered.wait(1))
+            self.assertFalse(destroyed.is_set())
+        finally:
+            release.set()
+            thread.join(2)
+        self.assertFalse(thread.is_alive())
+        self.assertTrue(destroyed.is_set())
+        self.assertEqual(answers, [True])
+        self.assertEqual(errors, [])
+
+    def test_save_refusal_and_non_boolean_answers_never_destroy_window(self):
+        for value in [False, None, {}, 'truthy']:
+            with self.subTest(value=value):
+                destroyed, answers, errors = [], [], []
+                window = SimpleNamespace(evaluate_js=lambda script, callback: callback(value),
+                                         destroy=lambda: destroyed.append(True))
+                thread = startup.request_window_close(window, threading.Event(), answers.append, errors.append)
+                thread.join(2)
+                self.assertFalse(thread.is_alive())
+                self.assertEqual((destroyed, answers, errors), ([], [False], []))
+
+    def test_pending_save_keeps_window_alive_until_async_approval(self):
+        entered, closed = threading.Event(), threading.Event()
+        callbacks, destroyed, answers, errors = [], [], [], []
+        def evaluate(script, callback):
+            callbacks.append(callback)
+            entered.set()
+        thread = startup.request_window_close(SimpleNamespace(evaluate_js=evaluate, destroy=lambda: destroyed.append(True)),
+                                              closed, answers.append, errors.append)
+        try:
+            self.assertTrue(entered.wait(1))
+            self.assertEqual(destroyed, [])
+            callbacks[0](True)
+            thread.join(2)
+        finally:
+            closed.set()
+            thread.join(2)
+        self.assertFalse(thread.is_alive())
+        self.assertEqual((destroyed, answers, errors), ([True], [True], []))
+
+    def test_closed_window_releases_pending_close_request(self):
+        entered, closed = threading.Event(), threading.Event()
+        def evaluate(script, callback): entered.set()
+        unexpected = []
+        thread = startup.request_window_close(SimpleNamespace(evaluate_js=evaluate, destroy=lambda: unexpected.append(True)),
+                                              closed, unexpected.append, unexpected.append)
+        self.assertTrue(entered.wait(1))
+        closed.set()
+        thread.join(2)
+        self.assertFalse(thread.is_alive())
+        self.assertEqual(unexpected, [])
+
+    def test_failed_evaluation_keeps_window_open(self):
+        errors, unexpected = [], []
+        def evaluate(script, callback): raise RuntimeError('synthetic dispatch failed')
+        thread = startup.request_window_close(SimpleNamespace(evaluate_js=evaluate, destroy=lambda: unexpected.append(True)),
+                                              threading.Event(), unexpected.append, errors.append)
+        thread.join(2)
+        self.assertFalse(thread.is_alive())
+        self.assertEqual(unexpected, [])
+        self.assertEqual(len(errors), 1)
+
+    def test_native_close_failure_is_reported(self):
+        errors, answers = [], []
+        def destroy(): raise RuntimeError('synthetic close failed')
+        thread = startup.request_window_close(SimpleNamespace(evaluate_js=lambda script, callback: callback(True), destroy=destroy),
+                                              threading.Event(), answers.append, errors.append)
+        thread.join(2)
+        self.assertFalse(thread.is_alive())
+        self.assertEqual(answers, [True])
+        self.assertEqual(len(errors), 1)
+
     def test_launcher_database_url_is_accepted_by_strict_supervisor(self):
         from ara.config import DatabaseSettings
         from ara.docx_analysis_worker.supervisor.database import create_engines

@@ -394,15 +394,6 @@ class DesktopApi:
         path.write_bytes(base64.b64decode(b64))
         return {"saved": True, "path": str(path)}
 
-    def close_result(self, ok):
-        # Ответ страницы на запрос закрытия: prepareToClose() дописал правки (ok) или пользователь остаётся.
-        print(f"close requested, page answered: {ok}", flush=True)
-        self._ctx["closing"] = False
-        if ok:
-            self._ctx["allow_close"] = True
-            threading.Thread(target=self._ctx["window"].destroy, daemon=True).start()
-
-
 def set_window_icon(title):
     """У окна pywebview значок Python: ставим значок AIRA (окно и панель задач)."""
     user = ctypes.windll.user32
@@ -424,7 +415,8 @@ def run_desktop(log):
     import webview
 
     ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("AIRA.Desktop")
-    ctx = {"server": Server(), "state": {"pg": None}, "allow_close": False, "closing": False, "window": None}
+    ctx = {"server": Server(), "state": {"pg": None}, "allow_close": False, "closing": False, "window": None,
+           "closed": threading.Event()}
     logo = "data:image/png;base64," + __import__("base64").b64encode((FRONTEND / "static" / "logo.png").read_bytes()).decode()
     window = webview.create_window("AIRA", html=SPLASH.replace("LOGO", logo), js_api=DesktopApi(ctx),
                                    width=1380, height=900, min_size=(1000, 640))
@@ -445,18 +437,20 @@ def run_desktop(log):
             return True
         if not ctx["closing"]:
             ctx["closing"] = True
-            # Спросить страницу: она допишет правки (prepareToClose) и ответит через close_result().
-            def request():
-                # run_js не ждёт ответа: окно может закрыться раньше, чем evaluate_js вернётся.
-                run = getattr(window, "run_js", None) or window.evaluate_js
-                try:
-                    run("window.__airaRequestClose ? window.__airaRequestClose() : window.pywebview.api.close_result(true)")
-                except Exception:
-                    ctx["closing"] = False
-            threading.Thread(target=request, daemon=True).start()
+            from aira_startup import request_window_close
+            def result(ok):
+                print(f"close requested, page answered: {ok}", flush=True)
+                ctx["closing"] = False
+                ctx["allow_close"] = ok
+            def error(exc):
+                ctx["closing"] = False
+                ctx["allow_close"] = False
+                print("close handshake failed:", type(exc).__name__, flush=True)
+            request_window_close(window, ctx["closed"], result, error)
         return False
 
     window.events.closing += on_closing
+    window.events.closed += ctx["closed"].set
 
     def boot():
         threading.Thread(target=set_window_icon, args=("AIRA",), daemon=True).start()
@@ -481,9 +475,7 @@ def run_desktop(log):
                 for relative in ("assets/js/main.mjs", "assets/js/host.mjs", "client/document-workspace.mjs"):
                     with urlopen(url + relative, timeout=5) as response:
                         print("selftest resource:", relative, response.status, response.headers.get("Content-Type"), flush=True)
-                # Exercise the normal close handshake. Calling destroy here
-                # releases pywebview's JS semaphore even when closing is vetoed,
-                # racing the close_result callback and its final window destroy.
+                # Exercise the same save/close handshake as the user's close button.
                 on_closing()
         except (Exception, SystemExit) as e:  # noqa: BLE001
             traceback.print_exc()
@@ -494,6 +486,7 @@ def run_desktop(log):
     try:
         webview.start(boot, gui="edgechromium", private_mode=False, storage_path=str(DATA / "webview"))
     finally:
+        ctx["closed"].set()
         shutdown_backend(ctx["server"])
 
 
