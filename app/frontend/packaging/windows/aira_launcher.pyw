@@ -71,6 +71,7 @@ def print_environment():
 
 def run(cmd, **kw):
     print("$", " ".join(str(c) for c in cmd), flush=True)
+    kw.setdefault("timeout", 120)
     return subprocess.run([str(c) for c in cmd], creationflags=NO_WINDOW, stdout=sys.stdout, stderr=sys.stdout,
                           stdin=subprocess.DEVNULL, **kw)
 
@@ -171,7 +172,7 @@ def start_postgres(say):
         raise LaunchError("Не удалось запустить базу данных AIRA.")
     import psycopg
 
-    with psycopg.connect(host="127.0.0.1", port=port, user="postgres", dbname="postgres", autocommit=True) as c:
+    with psycopg.connect(host="127.0.0.1", port=port, user="postgres", dbname="postgres", autocommit=True, connect_timeout=5, options="-c statement_timeout=5000") as c:
         if not c.execute("select 1 from pg_database where datname='aira'").fetchone():
             c.execute("create database aira")
     return port
@@ -196,7 +197,7 @@ def stuck_failed_run(pg_port):
     Снимать её безопасно, только если тот запуск уже завершён."""
     import psycopg
 
-    with psycopg.connect(host="127.0.0.1", port=pg_port, user="postgres", dbname="aira") as c:
+    with psycopg.connect(host="127.0.0.1", port=pg_port, user="postgres", dbname="aira", connect_timeout=5, options="-c lock_timeout=2000 -c statement_timeout=5000") as c:
         row = c.execute("select s.run_id from docx_analysis_supervisor s join docx_analysis_runs r on r.id = s.run_id "
                         "where s.slot_key = 1 and s.phase = 'armed' "
                         "and r.status in ('succeeded','failed','cancelled','timed_out')").fetchone()
@@ -206,7 +207,7 @@ def stuck_failed_run(pg_port):
 def clear_stuck_run(pg_port, run_id):
     import psycopg
 
-    with psycopg.connect(host="127.0.0.1", port=pg_port, user="postgres", dbname="aira") as c:
+    with psycopg.connect(host="127.0.0.1", port=pg_port, user="postgres", dbname="aira", connect_timeout=5, options="-c lock_timeout=2000 -c statement_timeout=5000") as c:
         c.execute("update docx_analysis_supervisor set phase='clean', revision=revision+1, launch_id=null, document_id=null, "
                   "run_id=null, attempt_id=null, worker_instance_id=null, claim_fence=null "
                   "where slot_key=1 and phase='armed' and run_id=%s", (run_id,))
@@ -232,6 +233,9 @@ class Server:
         self.error = None
 
     def start(self, pg_port, say):
+        from aira_startup import Progress, database_url, startup_error, wait_started
+        progress = Progress(say)
+        progress("prepare")
         configure_static_types()
         sys.executable = str(PY / "python.exe")  # воркер анализа — обычный python.exe (запускается без окна)
         sys.path.insert(0, str(FRONTEND))
@@ -242,7 +246,6 @@ class Server:
         port = pick_port(APP_PORT)
         self.url = f"http://127.0.0.1:{port}/aira/"
         analysis = "model" if (MODEL / "models" / "manifest.json").exists() else "fixture"
-        say("Загружаем модель…" if analysis == "model" else "Запускаем сервер…")
         from ara.desktop.access import new_session_token
         from ara.desktop.data_home import open_home
         from ara.model_protection.bundle import configuration
@@ -253,10 +256,14 @@ class Server:
         self.license_client = make_license_client(updates["license_origin"], self.license_home.path("license"), MODEL / "models")
         token = new_session_token()
         ready = threading.Event()
-        app = aira_host.build_app(database_url=f"postgresql+psycopg://postgres@127.0.0.1:{pg_port}/aira",
+        def startup_failed(error):
+            self.error = startup_error(error)
+        app = aira_host.build_app(database_url=database_url(pg_port),
                                   runtime_root=RUNTIME, port=port, analysis=analysis, initialize=True,
                                   on_ready=ready.set, log_file=LOGS / "aira.log", native_token=token.hex(),
-                                  model_key_provider=self.license_client.require_model_key if configuration(MODEL / "models") else None)
+                                  model_key_provider=self.license_client.require_model_key if configuration(MODEL / "models") else None,
+                                  startup_progress=progress, on_startup_error=startup_failed,
+                                  database_connect_args={"connect_timeout": 5, "options": "-c lock_timeout=5000 -c statement_timeout=30000"})
         self.connection = dict(app.state.aira_connection)
         self.license_client.start()
         protected_app = NativeApplication(app, self.license_client, f"http://127.0.0.1:{port}", token)
@@ -267,15 +274,13 @@ class Server:
             try:
                 self.server.run()
             except BaseException as e:  # noqa: BLE001
-                self.error = e
+                if self.error is None:
+                    self.error = startup_error(e)
                 traceback.print_exc()
 
         self.thread = threading.Thread(target=serve, name="aira-server", daemon=True)
         self.thread.start()
-        while not self.server.started:
-            if not self.thread.is_alive():
-                raise self.error or LaunchError("Сервер AIRA не запустился.")
-            time.sleep(0.1)
+        wait_started(self.server, self.thread, lambda: self.error, progress)
         STATE.write_text(json.dumps({"url": self.url, "pid": os.getpid()}), encoding="utf-8")
         return self.url
 
@@ -389,15 +394,6 @@ class DesktopApi:
         path.write_bytes(base64.b64decode(b64))
         return {"saved": True, "path": str(path)}
 
-    def close_result(self, ok):
-        # Ответ страницы на запрос закрытия: prepareToClose() дописал правки (ok) или пользователь остаётся.
-        print(f"close requested, page answered: {ok}", flush=True)
-        self._ctx["closing"] = False
-        if ok:
-            self._ctx["allow_close"] = True
-            threading.Thread(target=self._ctx["window"].destroy, daemon=True).start()
-
-
 def set_window_icon(title):
     """У окна pywebview значок Python: ставим значок AIRA (окно и панель задач)."""
     user = ctypes.windll.user32
@@ -419,7 +415,8 @@ def run_desktop(log):
     import webview
 
     ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("AIRA.Desktop")
-    ctx = {"server": Server(), "state": {"pg": None}, "allow_close": False, "closing": False, "window": None}
+    ctx = {"server": Server(), "state": {"pg": None}, "allow_close": False, "closing": False, "window": None,
+           "closed": threading.Event()}
     logo = "data:image/png;base64," + __import__("base64").b64encode((FRONTEND / "static" / "logo.png").read_bytes()).decode()
     window = webview.create_window("AIRA", html=SPLASH.replace("LOGO", logo), js_api=DesktopApi(ctx),
                                    width=1380, height=900, min_size=(1000, 640))
@@ -440,18 +437,20 @@ def run_desktop(log):
             return True
         if not ctx["closing"]:
             ctx["closing"] = True
-            # Спросить страницу: она допишет правки (prepareToClose) и ответит через close_result().
-            def request():
-                # run_js не ждёт ответа: окно может закрыться раньше, чем evaluate_js вернётся.
-                run = getattr(window, "run_js", None) or window.evaluate_js
-                try:
-                    run("window.__airaRequestClose ? window.__airaRequestClose() : window.pywebview.api.close_result(true)")
-                except Exception:
-                    ctx["closing"] = False
-            threading.Thread(target=request, daemon=True).start()
+            from aira_startup import request_window_close
+            def result(ok):
+                print(f"close requested, page answered: {ok}", flush=True)
+                ctx["closing"] = False
+                ctx["allow_close"] = ok
+            def error(exc):
+                ctx["closing"] = False
+                ctx["allow_close"] = False
+                print("close handshake failed:", type(exc).__name__, flush=True)
+            request_window_close(window, ctx["closed"], result, error)
         return False
 
     window.events.closing += on_closing
+    window.events.closed += ctx["closed"].set
 
     def boot():
         threading.Thread(target=set_window_icon, args=("AIRA",), daemon=True).start()
@@ -476,15 +475,18 @@ def run_desktop(log):
                 for relative in ("assets/js/main.mjs", "assets/js/host.mjs", "client/document-workspace.mjs"):
                     with urlopen(url + relative, timeout=5) as response:
                         print("selftest resource:", relative, response.status, response.headers.get("Content-Type"), flush=True)
-                window.destroy()
-        except Exception as e:  # noqa: BLE001
+                # Exercise the same save/close handshake as the user's close button.
+                on_closing()
+        except (Exception, SystemExit) as e:  # noqa: BLE001
             traceback.print_exc()
-            msg = str(e) if isinstance(e, LaunchError) else "AIRA не запустилась."
+            from aira_startup import StartupError
+            msg = str(e) if isinstance(e, (LaunchError, StartupError)) else "AIRA не запустилась."
             say(f"{msg} Подробности — в журнале.", True)
 
     try:
         webview.start(boot, gui="edgechromium", private_mode=False, storage_path=str(DATA / "webview"))
     finally:
+        ctx["closed"].set()
         shutdown_backend(ctx["server"])
 
 

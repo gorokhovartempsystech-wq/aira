@@ -11,7 +11,14 @@ from .runtime import _create_supervisor
 
 
 def create_local_model_supervisor(
-    *, settings, user_id, project_id, installation_id, root, model_key_provider=None
+    *,
+    settings,
+    user_id,
+    project_id,
+    installation_id,
+    root,
+    model_key_provider=None,
+    startup_checkpoint=None,
 ):
     if sys.platform == "darwin":
         from ._macos_adapter import MacPlatform as Parent
@@ -48,7 +55,9 @@ def create_local_model_supervisor(
         project_id=project_id,
         installation_id=installation_id,
         root=root,
-        execution=execution(),
+        execution=execution(
+            **({"checkpoint": startup_checkpoint} if startup_checkpoint is not None else {})
+        ),
         execution_kind="local_model",
         platform=WordPlatform(),
         source_profile=PROFILE,

@@ -11,9 +11,11 @@ def bundle():
     return root / "models", root
 
 
-def execution():
+def execution(*, checkpoint=None):
     models, engine = bundle()
-    return package_identity(models, engine)
+    return package_identity(
+        models, engine, **({"checkpoint": checkpoint} if checkpoint is not None else {})
+    )
 
 
 def run_native(request, emit, *, model_key=None):
