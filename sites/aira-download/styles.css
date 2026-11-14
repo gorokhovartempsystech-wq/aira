@@ -116,3 +116,12 @@ main { display: flex; align-items: center; justify-content: center; flex: 1; min
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }
 
 .mac-release-note { margin-top: 3px; }
+
+.mac-install-note { max-width: 520px; margin: 10px auto 0; color: #6b6d7b; font-size: 11px; line-height: 1.65; text-wrap: pretty; }
+.inline-help-button { display: inline; padding: 0; border: 0; background: transparent; color: #54508b; font: inherit; text-decoration: underline; text-underline-offset: 3px; }
+.inline-help-button:hover { color: #332e69; }
+.inline-help-button:focus-visible { outline: 2px solid #7772b4; outline-offset: 3px; border-radius: 2px; }
+.install-steps { margin: 16px 0; padding-left: 22px; color: #6b6d7b; font-size: 12px; line-height: 1.65; }
+.install-steps li + li { margin-top: 9px; }
+.dialog-details a { color: #54508b; text-underline-offset: 3px; }
+@media (max-width: 700px) { .mac-install-note { max-width: 310px; font-size: 10px; } }

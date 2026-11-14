@@ -141,7 +141,11 @@ def test_read_limits_without_submission(io, size):
     assert p.close()
 
 
-@pytest.mark.parametrize("data", [b"", b"x" * 65537, bytearray(b"x"), "text", None])
+@pytest.mark.parametrize(
+    "data",
+    [b"", b"x" * 65537, bytearray(b"x"), "text", None],
+    ids=["empty", "oversized", "mutable", "text", "null"],
+)
 def test_write_limits(io, data):
     p = pair(io)
     reject(lambda: p.writer.begin_write(data), "validation_error")

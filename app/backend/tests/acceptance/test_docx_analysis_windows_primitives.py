@@ -2,6 +2,7 @@
 
 import copy
 import ctypes as c
+import gc
 import importlib
 import os
 import pickle
@@ -368,16 +369,27 @@ def test_native_reservations_and_handle_stability(native_root):
     count = kernel.GetProcessHandleCount
     count.argtypes = [c.c_void_p, c.POINTER(c.c_uint32)]
     count.restype = c.c_int32
+
+    def cycle(iterations):
+        owner = api().acquire_owner(native_root)
+        try:
+            reject("runtime_busy", lambda: api().acquire_owner(native_root))
+            clock = api().WindowsClock()
+            assert clock.now_ns() <= clock.now_ns()
+            for _ in range(iterations):
+                slot = owner.reserve_slot()
+                assert owner.release_slot(slot) is True
+        finally:
+            owner.close()
+
+    # Exclude one-time Windows library initialization and Python-owned mutexes.
+    # The measured native owner/slot cycle must still have exactly zero growth.
+    cycle(1)
+    gc.collect()
     before, after = c.c_uint32(), c.c_uint32()
     assert count(kernel.GetCurrentProcess(), c.byref(before))
-    owner = api().acquire_owner(native_root)
-    reject("runtime_busy", lambda: api().acquire_owner(native_root))
-    clock = api().WindowsClock()
-    assert clock.now_ns() <= clock.now_ns()
-    for _ in range(100):
-        slot = owner.reserve_slot()
-        assert owner.release_slot(slot) is True
-    owner.close()
+    cycle(100)
+    gc.collect()
     assert count(kernel.GetCurrentProcess(), c.byref(after))
     assert after.value == before.value
     assert (Path(native_root) / "runtime.owner").read_bytes() == b""

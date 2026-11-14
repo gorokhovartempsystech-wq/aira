@@ -65,13 +65,13 @@ AFTER = {"VAGUE": "<измеримое значение>", "ESCAPE": "<усло�
 # --- модели ------------------------------------------------------------------
 
 class Onnx:
-    def __init__(self, folder, threads):
+    def __init__(self, folder, threads, *, model_reader=None):
         self.tok = Tokenizer.from_file(str(Path(folder) / "tokenizer.json"))
         self.tok.enable_truncation(256)
         self.tok.enable_padding()
         so = ort.SessionOptions()
         so.intra_op_num_threads = threads
-        self.sess = ort.InferenceSession(str(Path(folder) / "model.int8.onnx"), so, providers=["CPUExecutionProvider"])
+        self.sess = ort.InferenceSession(model_reader(Path(folder) / "model.int8.onnx") if model_reader is not None else str(Path(folder) / "model.int8.onnx"), so, providers=["CPUExecutionProvider"])
         self.names = {i.name for i in self.sess.get_inputs()}
 
     def run(self, a, b=None, bs=32):
@@ -145,14 +145,17 @@ def softmax(x, t=1.0):
 
 
 class Engine:
-    def __init__(self, models, threads=4):
+    def __init__(self, models, threads=4, *, model_reader=None):
         self.dir = Path(models)
         self.manifest = json.loads((self.dir / "manifest.json").read_text(encoding="utf-8"))
+        if self.manifest.get("protection") and model_reader is None:
+            raise ValueError("Protected model access required")
         m = self.manifest["models"]
         t = time.time()
-        self.emb = Onnx(self.dir / "embedder", threads)
-        self.pair = Onnx(self.dir / "pair", threads)
-        self.nli = StableNli(Onnx(self.dir / "nli", threads))
+        reader_options = {} if model_reader is None else {"model_reader": model_reader}
+        self.emb = Onnx(self.dir / "embedder", threads, **reader_options)
+        self.pair = Onnx(self.dir / "pair", threads, **reader_options)
+        self.nli = StableNli(Onnx(self.dir / "nli", threads, **reader_options))
         self.pair_labels, self.pair_t = m["pair"]["labels"], m["pair"].get("temperature", 1.0)
         self.nli_labels = m["nli"]["labels"]
         self.load_s = round(time.time() - t, 2)
