@@ -182,7 +182,8 @@ def licence_stub_routes(app):
 
 def build_app(*, database_url, runtime_root, port, analysis="model", initialize=True,
               licence_stub=False, dev=False, dev_pages=None, on_ready=None, log_file=None,
-              native_token=None, model_key_provider=None):
+              native_token=None, model_key_provider=None, startup_progress=None,
+              on_startup_error=None):
     """Возвращает ASGI-приложение. Воркер анализа запускается и останавливается в lifespan."""
     from sqlalchemy import create_engine
 
@@ -194,15 +195,31 @@ def build_app(*, database_url, runtime_root, port, analysis="model", initialize=
     settings = DatabaseSettings(database_url)
     engine = create_engine(settings.database_url.get_secret_value(), hide_parameters=True)
     if initialize:
-        init_database(engine)
+        if startup_progress:
+            startup_progress("database")
+        try:
+            init_database(engine)
+        except BaseException:
+            engine.dispose()
+            raise
 
     runtime = DocumentRuntime(engine=engine, user_id=USER, project_id=PROJECT, mode="local")
     if analysis == "model":
         from ara.docx_analysis_worker.supervisor.local_model import create_local_model_supervisor as factory
     else:
         from ara.docx_analysis_worker.supervisor.word_fixture import create_word_fixture_supervisor as factory
-    supervisor = factory(settings=settings, user_id=USER, project_id=PROJECT, installation_id=INSTALL, root=root,
-                         **({"model_key_provider": model_key_provider} if analysis == "model" and model_key_provider is not None else {}))
+    if startup_progress:
+        startup_progress("model_package")
+    options = {"model_key_provider": model_key_provider} if analysis == "model" and model_key_provider is not None else {}
+    if startup_progress and analysis == "model":
+        options["startup_checkpoint"] = startup_progress
+    try:
+        supervisor = factory(settings=settings, user_id=USER, project_id=PROJECT, installation_id=INSTALL, root=root, **options)
+    except BaseException:
+        engine.dispose()
+        raise
+    if startup_progress:
+        startup_progress("routes")
     app = create_app(document_runtime=runtime, analysis_supervisor=supervisor, table_editor=True, field_editor=True)
     if licence_stub:
         licence_stub_routes(app)
@@ -214,8 +231,9 @@ def build_app(*, database_url, runtime_root, port, analysis="model", initialize=
     async def lifespan(application):
         import anyio
 
-        supervisor.start()
+        started = False
         try:
+            supervisor.start()
             deadline = time.monotonic() + 60
             while supervisor.view().phase != "ready":
                 view = supervisor.view()
@@ -225,7 +243,12 @@ def build_app(*, database_url, runtime_root, port, analysis="model", initialize=
             if on_ready:
                 on_ready()
             async with previous(application):
+                started = True
                 yield
+        except BaseException as error:
+            if not started and on_startup_error is not None:
+                on_startup_error(error)
+            raise
         finally:
             deadline = time.monotonic() + 30
             while not supervisor.shutdown(timeout=0.1):

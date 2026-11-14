@@ -20,7 +20,8 @@ AppComments=Проверка требований: размытые формул
 ; имён папок, — C:\AIRA: встроенный PostgreSQL не работает с кириллицей в пути.
 DefaultDirName={code:DefaultDir}
 DisableProgramGroupPage=yes
-DisableDirPage=auto
+DisableDirPage=no
+InfoBeforeFile=INSTALL-INFO.txt
 PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible

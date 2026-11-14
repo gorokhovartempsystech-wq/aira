@@ -20,17 +20,27 @@ def require(ok):
         raise ValueError("Invalid local model input or package")
 
 
-def package_identity(model_dir, engine_dir):
+def package_identity(model_dir, engine_dir, *, checkpoint=None):
     root = Path(model_dir).resolve()
     raw = (root / "manifest.json").read_bytes()
     manifest = json.loads(raw)
     require(type(manifest.get("files")) is dict and bool(manifest["files"]))
     for name, expected in manifest["files"].items():
+        if checkpoint is not None:
+            checkpoint()
         path = (root / name).resolve()
         require(path.is_relative_to(root) and path.is_file())
         require(path.stat().st_size == expected["bytes"])
         with path.open("rb") as handle:
-            digest = hashlib.file_digest(handle, "sha256").hexdigest()
+            if checkpoint is None:
+                digest = hashlib.file_digest(handle, "sha256").hexdigest()
+            else:
+                hashed = hashlib.sha256()
+                while chunk := handle.read(1024 * 1024):
+                    checkpoint()
+                    hashed.update(chunk)
+                checkpoint()
+                digest = hashed.hexdigest()
         require(digest == expected["sha256"])
     runtime = Path(engine_dir) / "aira_ml"
     adapter = hashlib.sha256(Path(__file__).read_bytes())

@@ -50,7 +50,7 @@ jobs:
           $work = Join-Path $env:RUNNER_TEMP 'aira-build'
           $sdk = (Get-ChildItem "$work\winsparkle" -Filter WinSparkle.dll -Recurse | Where-Object { $_.FullName -match 'x64\\Release' } | Select-Object -First 1).Directory.Parent.Parent.FullName
           $iscc = (Get-ChildItem 'C:\Program Files (x86)\Inno Setup*\ISCC.exe' | Select-Object -First 1).FullName
-          & app/frontend/packaging/windows/build.ps1 -ModelDir "$work\model\models-protected" -PgDir "$work\legacy\pgsql" -Python $env:pythonLocation -Out "$work\release" -Version '0.2.7' -WinSparkleDir $sdk -Iscc $iscc -StageOnly
+          & app/frontend/packaging/windows/build.ps1 -ModelDir "$work\model\models-protected" -PgDir "$work\legacy\pgsql" -Python $env:pythonLocation -Out "$work\release" -Version '0.2.8' -WinSparkleDir $sdk -Iscc $iscc -StageOnly
           if ($LASTEXITCODE) { throw 'Installer build failed' }
       - name: Verify staged native startup before compression
         shell: pwsh
@@ -58,6 +58,8 @@ jobs:
           $work = Join-Path $env:RUNNER_TEMP 'aira-build'
           & "$work\release\stage\python\python.exe" -s -E tools/test_windows_launcher.py
           if ($LASTEXITCODE) { throw 'Windows static module regression failed' }
+          & "$work\release\stage\python\python.exe" -s -E tools/test_windows_startup.py
+          if ($LASTEXITCODE) { throw 'Startup failure/deadline regression failed' }
           python tools/smoke_windows_desktop.py "$work\release\stage"
           if ($LASTEXITCODE) { throw 'Staged desktop smoke failed' }
       - name: Build installer from tested staging
@@ -65,25 +67,25 @@ jobs:
         run: |
           $work = Join-Path $env:RUNNER_TEMP 'aira-build'
           $iscc = (Get-ChildItem 'C:\Program Files (x86)\Inno Setup*\ISCC.exe' | Select-Object -First 1).FullName
-          & $iscc /Q "/DSourceDir=$work\release\stage" '/DAppVersion=0.2.7' "/O$work\release" app/frontend/packaging/windows/aira.iss
+          & $iscc /Q "/DSourceDir=$work\release\stage" '/DAppVersion=0.2.8' "/O$work\release" app/frontend/packaging/windows/aira.iss
           if ($LASTEXITCODE) { throw 'ISCC failed' }
-          $exe = "$work\release\AIRA-Setup-0.2.7.exe"
+          $exe = "$work\release\AIRA-Setup-0.2.8.exe"
           $hash = (Get-FileHash $exe -Algorithm SHA256).Hash.ToLower()
-          Set-Content "$exe.sha256" "$hash  AIRA-Setup-0.2.7.exe" -Encoding ascii
+          Set-Content "$exe.sha256" "$hash  AIRA-Setup-0.2.8.exe" -Encoding ascii
       - name: Install new package and exercise native startup
         shell: pwsh
         run: |
           $work = Join-Path $env:RUNNER_TEMP 'aira-build'
-          $install = Start-Process "$work\release\AIRA-Setup-0.2.7.exe" -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/SP-','/NORESTART',"/DIR=$work\installed") -Wait -PassThru
+          $install = Start-Process "$work\release\AIRA-Setup-0.2.8.exe" -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/SP-','/NORESTART',"/DIR=$work\installed") -Wait -PassThru
           if ($install.ExitCode -ne 0) { throw 'Protected installer failed' }
-          python tools/smoke_windows_desktop.py "$work\installed"
+          python tools/smoke_windows_desktop.py "$work\installed" --runs 2
           if ($LASTEXITCODE) { throw 'Installed desktop smoke failed' }
       - uses: actions/upload-artifact@v4
         with:
-          name: AIRA-Windows-0.2.7
+          name: AIRA-Windows-0.2.8
           path: |
-            ${{ runner.temp }}/aira-build/release/AIRA-Setup-0.2.7.exe
-            ${{ runner.temp }}/aira-build/release/AIRA-Setup-0.2.7.exe.sha256
+            ${{ runner.temp }}/aira-build/release/AIRA-Setup-0.2.8.exe
+            ${{ runner.temp }}/aira-build/release/AIRA-Setup-0.2.8.exe.sha256
           retention-days: 14
       - uses: actions/upload-artifact@v4
         if: always()
