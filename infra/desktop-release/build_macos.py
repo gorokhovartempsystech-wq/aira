@@ -53,7 +53,9 @@ def main():
         "\n".join(
             line
             for line in Path("app/backend/requirements.lock").read_text().splitlines()
-            if not line.startswith(("pytest", "ruff", "iniconfig", "pluggy", "Pygments"))
+            if not line.startswith(
+                ("pytest", "ruff", "iniconfig", "pluggy", "Pygments")
+            )
         )
     )
     run(
@@ -90,8 +92,15 @@ def main():
     if list(payload.rglob("secrets.env")) or list(
         (payload / "app/backend/ml_bundle/models").rglob("*.onnx")
     ):
-        raise ValueError("operator settings or plaintext models must not enter the installer")
-    run(sys.executable, "app/frontend/packaging/updates/fetch_sdk.py", "macos", work / "sparkle")
+        raise ValueError(
+            "operator settings or plaintext models must not enter the installer"
+        )
+    run(
+        sys.executable,
+        "app/frontend/packaging/updates/fetch_sdk.py",
+        "macos",
+        work / "sparkle",
+    )
     output = work / "release"
     output.mkdir()
     installer = output / filename("macos-arm64", release["version"])

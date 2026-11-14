@@ -23,7 +23,9 @@ def main():
     token = values.get("GITHUB_TOKEN")
     seed = values.get("AIRA_UPDATE_ED25519_SEED")
     if not token or not seed:
-        raise SystemExit("Missing GITHUB_TOKEN or AIRA_UPDATE_ED25519_SEED in ~/secrets.env")
+        raise SystemExit(
+            "Missing GITHUB_TOKEN or AIRA_UPDATE_ED25519_SEED in ~/secrets.env"
+        )
     raw = base64.b64decode(seed, validate=True)
     public = (
         Ed25519PrivateKey.from_private_bytes(raw)
@@ -31,7 +33,9 @@ def main():
         .public_bytes(Encoding.Raw, PublicFormat.Raw)
     )
     if base64.b64encode(public).decode() != PUBLIC_KEY:
-        raise SystemExit("Signing seed does not match the installed update verification key")
+        raise SystemExit(
+            "Signing seed does not match the installed update verification key"
+        )
     from nacl.public import PublicKey, SealedBox
 
     headers = {
@@ -40,13 +44,18 @@ def main():
         "X-GitHub-Api-Version": "2022-11-28",
     }
     endpoint = "https://api.github.com/repos/" + REPOSITORY + "/actions/secrets/"
-    with urlopen(Request(endpoint + "public-key", headers=headers), timeout=20) as response:
+    with urlopen(
+        Request(endpoint + "public-key", headers=headers), timeout=20
+    ) as response:
         key = json.load(response)
-    encrypted = SealedBox(PublicKey(base64.b64decode(key["key"], validate=True))).encrypt(
-        seed.encode()
-    )
+    encrypted = SealedBox(
+        PublicKey(base64.b64decode(key["key"], validate=True))
+    ).encrypt(seed.encode())
     body = json.dumps(
-        {"key_id": key["key_id"], "encrypted_value": base64.b64encode(encrypted).decode()}
+        {
+            "key_id": key["key_id"],
+            "encrypted_value": base64.b64encode(encrypted).decode(),
+        }
     ).encode()
     request = Request(
         endpoint + "AIRA_UPDATE_ED25519_SEED",
@@ -57,11 +66,15 @@ def main():
     with urlopen(request, timeout=20) as response:
         if response.status not in (201, 204):
             raise RuntimeError("Secret provisioning failed")
-    print("Existing update signing key stored in GitHub Actions; no credentials printed.")
+    print(
+        "Existing update signing key stored in GitHub Actions; no credentials printed."
+    )
 
 
 if __name__ == "__main__":
     try:
         main()
     except HTTPError as error:
-        raise SystemExit("GitHub secret provisioning failed: HTTP " + str(error.code)) from None
+        raise SystemExit(
+            "GitHub secret provisioning failed: HTTP " + str(error.code)
+        ) from None

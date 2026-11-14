@@ -29,7 +29,10 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 ROOT = Path("/var/lib/aira-release-publish")
 DOWNLOADS = Path("/srv/aira-public/downloads")
 ENDPOINT = "/_deploy/releases"
-WORKFLOW = "gorokhovartempsystech-wq/aira/.github/workflows/desktop-release.yml@refs/heads/main"
+WORKFLOW = (
+    "gorokhovartempsystech-wq/aira/"
+    ".github/workflows/desktop-release.yml@refs/heads/main"
+)
 MAX_ARTIFACT = 1800 * 1024**2
 MAX_METADATA = 128 * 1024
 
@@ -62,7 +65,7 @@ def upload(root, claims, platform, stream, length, expected):
         raise ValueError("artifact length")
     if not re.fullmatch("[0-9a-f]{64}", expected):
         raise ValueError("artifact digest")
-    if shutil.disk_usage(root).free < length + 256 * 1024**2:
+    if shutil.disk_usage(root).free < length + 512 * 1024**2:
         raise ValueError("insufficient staging space")
     stage = root / "uploads" / (str(run[0]) + "-" + str(run[1]))
     stage.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -109,7 +112,9 @@ def signed_feed(platform, feed, record, version, build, key):
         "url": ORIGIN + "/downloads/" + record["filename"],
         "length": str(record["bytes"]),
         "{" + SPARKLE + "}shortVersionString": version,
-        "{" + SPARKLE + "}version": str(build) if platform == "macos-arm64" else version,
+        "{" + SPARKLE + "}version": str(build)
+        if platform == "macos-arm64"
+        else version,
     }
     if any(attrs.get(k) != v for k, v in expected.items()):
         raise ValueError("feed artifact mismatch")
@@ -130,7 +135,10 @@ def signed_feed(platform, feed, record, version, build, key):
     else:
         if attrs.get("{" + SPARKLE + "}os") != "windows-x64":
             raise ValueError("Windows architecture")
-        if attrs.get("{" + SPARKLE + "}installerArguments") != "/SILENT /NORESTART /AIRAUPDATE=1":
+        if (
+            attrs.get("{" + SPARKLE + "}installerArguments")
+            != "/SILENT /NORESTART /AIRAUPDATE=1"
+        ):
             raise ValueError("installer arguments")
     return signature
 
@@ -139,9 +147,15 @@ def promote(root, downloads, claims, document, public_key=PUBLIC_KEY):
     version, build, run = check_order(root, claims)
     if set(document) != {"sha", "version", "build", "platforms", "feeds"}:
         raise ValueError("release schema")
-    if (document["sha"], document["version"], document["build"]) != (claims["sha"], version, build):
+    if (document["sha"], document["version"], document["build"]) != (
+        claims["sha"],
+        version,
+        build,
+    ):
         raise ValueError("release identity")
-    if set(document["platforms"]) != set(PLATFORMS) or set(document["feeds"]) != set(PLATFORMS):
+    if set(document["platforms"]) != set(PLATFORMS) or set(document["feeds"]) != set(
+        PLATFORMS
+    ):
         raise ValueError("both tested platforms required")
     previous = current(root)
     if previous and any(
@@ -149,14 +163,24 @@ def promote(root, downloads, claims, document, public_key=PUBLIC_KEY):
         for p in previous["platforms"].values()
     ):
         raise ValueError("release downgrade")
-    key = Ed25519PublicKey.from_public_bytes(base64.b64decode(public_key, validate=True))
+    key = Ed25519PublicKey.from_public_bytes(
+        base64.b64decode(public_key, validate=True)
+    )
     stage = root / "uploads" / (str(run[0]) + "-" + str(run[1]))
     records, feeds = {}, {}
     for platform in PLATFORMS:
         record = document["platforms"][platform]
         name = filename(platform, version)
         source = stage / name
-        if set(record) != {"sha", "version", "build", "platform", "filename", "bytes", "sha256"}:
+        if set(record) != {
+            "sha",
+            "version",
+            "build",
+            "platform",
+            "filename",
+            "bytes",
+            "sha256",
+        }:
             raise ValueError("artifact receipt schema")
         if (
             record["sha"],
@@ -198,7 +222,8 @@ def promote(root, downloads, claims, document, public_key=PUBLIC_KEY):
     }
     if previous and run == previous.get("run"):
         if previous != manifest or any(
-            (root / "current" / (p + ".xml")).read_bytes() != feeds[p] for p in PLATFORMS
+            (root / "current" / (p + ".xml")).read_bytes() != feeds[p]
+            for p in PLATFORMS
         ):
             raise ValueError("published release is immutable")
         return previous
@@ -211,6 +236,13 @@ def promote(root, downloads, claims, document, public_key=PUBLIC_KEY):
         expected_checksum = record["sha256"] + "  " + record["filename"] + "\n"
         if checksum.exists() and checksum.read_text() != expected_checksum:
             raise ValueError("existing checksum mismatch")
+    required_space = sum(
+        record["bytes"]
+        for record in records.values()
+        if not (downloads / record["filename"]).exists()
+    )
+    if shutil.disk_usage(downloads).free < required_space + 512 * 1024**2:
+        raise ValueError("insufficient publication space")
     releases = root / "releases"
     releases.mkdir(exist_ok=True)
     release = Path(tempfile.mkdtemp(prefix="release-", dir=releases))
@@ -221,7 +253,9 @@ def promote(root, downloads, claims, document, public_key=PUBLIC_KEY):
     for record in records.values():
         source, destination = stage / record["filename"], downloads / record["filename"]
         if not destination.exists():
-            descriptor, path = tempfile.mkstemp(prefix=".release-", suffix=".part", dir=downloads)
+            descriptor, path = tempfile.mkstemp(
+                prefix=".release-", suffix=".part", dir=downloads
+            )
             temporary = Path(path)
             try:
                 with source.open("rb") as stream, os.fdopen(descriptor, "wb") as output:
@@ -237,7 +271,9 @@ def promote(root, downloads, claims, document, public_key=PUBLIC_KEY):
                 temporary.unlink(missing_ok=True)
         checksum = downloads / (record["filename"] + ".sha256")
         if not checksum.exists():
-            descriptor, path = tempfile.mkstemp(prefix=".checksum-", suffix=".part", dir=downloads)
+            descriptor, path = tempfile.mkstemp(
+                prefix=".checksum-", suffix=".part", dir=downloads
+            )
             temporary = Path(path)
             try:
                 with os.fdopen(descriptor, "w") as output:
@@ -298,7 +334,14 @@ class Handler(BaseHTTPRequestHandler):
             if not authorization.startswith("Bearer "):
                 raise ValueError("missing token")
             claims = self.verifier.verify(authorization[7:])
-        except (OSError, ValueError, KeyError, TypeError, AttributeError, InvalidSignature):
+        except (
+            OSError,
+            ValueError,
+            KeyError,
+            TypeError,
+            AttributeError,
+            InvalidSignature,
+        ):
             self.respond(401, {"error": "unauthorized"})
             return
         try:
@@ -330,13 +373,17 @@ class Handler(BaseHTTPRequestHandler):
             self.respond(400, {"error": "invalid release; previous release retained"})
             return
         except (OSError, RuntimeError):
-            self.respond(500, {"error": "publication failed; inspect current release receipt"})
+            self.respond(
+                500, {"error": "publication failed; inspect current release receipt"}
+            )
             return
         self.respond(200, result)
 
 
 def main():
-    spec = importlib.util.spec_from_file_location("aira_oidc", "/opt/aira-site-deploy/server.py")
+    spec = importlib.util.spec_from_file_location(
+        "aira_oidc", "/opt/aira-site-deploy/server.py"
+    )
     oidc = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(oidc)
     Handler.verifier = oidc.Verifier(workflow=WORKFLOW, audience=ORIGIN + ENDPOINT)

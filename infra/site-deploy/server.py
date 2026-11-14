@@ -23,13 +23,17 @@ WORKFLOW = REPOSITORY + "/.github/workflows/site-deploy.yml@refs/heads/main"
 ISSUER = "https://token.actions.githubusercontent.com"
 ORIGIN = "https://51.250.81.70"
 ENDPOINT = "/_deploy/site"
-FILES = frozenset(("index.html", "styles.css", "app.js", "favicon.svg", "third-party.txt"))
+FILES = frozenset(
+    ("index.html", "styles.css", "app.js", "favicon.svg", "third-party.txt")
+)
 MAX_BODY = 1024 * 1024
 ROOT = Path("/var/lib/aira-site-deploy")
 
 
 def unbase(value):
-    return base64.b64decode(value + "=" * (-len(value) % 4), altchars=b"-_", validate=True)
+    return base64.b64decode(
+        value + "=" * (-len(value) % 4), altchars=b"-_", validate=True
+    )
 
 
 class Verifier:
@@ -93,7 +97,8 @@ class Verifier:
         if not re.fullmatch(r"[0-9a-f]{40}", claims.get("sha", "")):
             raise ValueError("commit")
         if not all(
-            re.fullmatch(r"[1-9][0-9]{0,19}", claims.get(k, "")) for k in ("run_id", "run_attempt")
+            re.fullmatch(r"[1-9][0-9]{0,19}", claims.get(k, ""))
+            for k in ("run_id", "run_attempt")
         ):
             raise ValueError("run")
         return claims
@@ -105,10 +110,15 @@ def publish(root, document, claims):
     files = document["files"]
     if not isinstance(files, dict) or set(files) != FILES:
         raise ValueError("file allowlist")
-    if not all(isinstance(v, str) and v and len(v.encode()) <= 256 * 1024 for v in files.values()):
+    if not all(
+        isinstance(v, str) and v and len(v.encode()) <= 256 * 1024
+        for v in files.values()
+    ):
         raise ValueError("file size")
     encoded = {name: value.encode() for name, value in files.items()}
-    digests = {name: hashlib.sha256(value).hexdigest() for name, value in encoded.items()}
+    digests = {
+        name: hashlib.sha256(value).hexdigest() for name, value in encoded.items()
+    }
     run = [int(claims[k]) for k in ("run_id", "run_attempt")]
     current = root / "current"
     if current.exists():
@@ -169,7 +179,14 @@ class Handler(BaseHTTPRequestHandler):
             if not authorization.startswith("Bearer "):
                 raise ValueError("missing token")
             claims = self.verifier.verify(authorization[7:])
-        except (OSError, ValueError, KeyError, TypeError, AttributeError, InvalidSignature):
+        except (
+            OSError,
+            ValueError,
+            KeyError,
+            TypeError,
+            AttributeError,
+            InvalidSignature,
+        ):
             self.respond(401, {"error": "unauthorized"})
             return
         try:

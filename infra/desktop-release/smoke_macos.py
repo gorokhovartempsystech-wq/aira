@@ -1,4 +1,4 @@
-"""Exercise the packaged ARM runtime twice in a synthetic profile; never activate a real key."""
+"""Exercise the packaged ARM runtime twice without a real license key."""
 
 import json
 import plistlib
@@ -15,12 +15,22 @@ from urllib.request import Request, urlopen
 
 def main():
     installer, version, build = sys.argv[1:]
-    with tempfile.TemporaryDirectory(prefix="aira-release-smoke-", dir="/private/tmp") as temporary:
+    with tempfile.TemporaryDirectory(
+        prefix="aira-release-smoke-", dir="/private/tmp"
+    ) as temporary:
         root = Path(temporary)
         mount = root / "volume"
         mount.mkdir()
         subprocess.run(
-            ["hdiutil", "attach", "-readonly", "-nobrowse", "-mountpoint", str(mount), installer],
+            [
+                "hdiutil",
+                "attach",
+                "-readonly",
+                "-nobrowse",
+                "-mountpoint",
+                str(mount),
+                installer,
+            ],
             check=True,
         )
         try:
@@ -28,7 +38,9 @@ def main():
             info = plistlib.loads((app / "Contents/Info.plist").read_bytes())
             assert info["CFBundleShortVersionString"] == version
             assert info["CFBundleVersion"] == build
-            subprocess.run(["codesign", "--verify", "--deep", "--strict", str(app)], check=True)
+            subprocess.run(
+                ["codesign", "--verify", "--deep", "--strict", str(app)], check=True
+            )
             payload = app / "Contents/Resources/payload"
             profile = root / "profile"
             for _ in range(2):
@@ -74,7 +86,9 @@ def main():
                             break
                         time.sleep(0.2)
                     else:
-                        raise RuntimeError("Packaged runtime did not reach activation screen")
+                        raise RuntimeError(
+                            "Packaged runtime did not reach activation screen"
+                        )
                     assert not list(profile.rglob("*.onnx"))
                 finally:
                     if child.poll() is None:
@@ -84,9 +98,14 @@ def main():
                     except subprocess.TimeoutExpired:
                         child.kill()
                         child.wait()
-                        raise RuntimeError("Packaged runtime failed to stop cleanly") from None
+                        raise RuntimeError(
+                            "Packaged runtime failed to stop cleanly"
+                        ) from None
                     assert code == 0
-            print("Mac packaged runtime: two clean starts, activation gate and shutdown confirmed.")
+            print(
+                "Mac packaged runtime: two clean starts, "
+                "activation gate and shutdown confirmed."
+            )
         finally:
             subprocess.run(["hdiutil", "detach", str(mount)], check=True)
 

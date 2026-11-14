@@ -74,13 +74,20 @@ def main():
     )
     try:
         subprocess.run(
-            [sys.executable, "-m", "venv", "--system-site-packages", str(root / ".venv")],
+            [
+                sys.executable,
+                "-m",
+                "venv",
+                "--system-site-packages",
+                str(root / ".venv"),
+            ],
             check=True,
         )
         subprocess.run(["bash", "scripts/check.sh"], cwd=root, check=True)
     finally:
         subprocess.run(
-            [str(binaries / "pg_ctl"), "-D", str(data), "-m", "fast", "-w", "stop"], check=True
+            [str(binaries / "pg_ctl"), "-D", str(data), "-m", "fast", "-w", "stop"],
+            check=True,
         )
         (socket / "owner.json").unlink()
         socket.rmdir()

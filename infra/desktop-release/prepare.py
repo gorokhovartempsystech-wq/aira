@@ -18,7 +18,9 @@ def main():
     number = os.environ["GITHUB_RUN_NUMBER"]
     version, build = version_for_run(number), build_for_run(number)
     args.work.mkdir(parents=True, exist_ok=True)
-    (args.work / "release.json").write_text(json.dumps({"version": version, "build": build}))
+    (args.work / "release.json").write_text(
+        json.dumps({"version": version, "build": build})
+    )
     if os.environ.get("GITHUB_OUTPUT"):
         with open(os.environ["GITHUB_OUTPUT"], "a") as output:
             output.write(f"version={version}\nbuild={build}\n")
@@ -31,7 +33,11 @@ def main():
         if sum(item.file_size for item in entries) > 2 * 1024**3:
             raise ValueError("model archive too large")
         for item in entries:
-            if not (destination / item.filename).resolve().is_relative_to(destination.resolve()):
+            if (
+                not (destination / item.filename)
+                .resolve()
+                .is_relative_to(destination.resolve())
+            ):
                 raise ValueError("unsafe model archive entry")
         bundle.extractall(destination)
     models = destination / "models-protected"
@@ -41,7 +47,8 @@ def main():
     ):
         raise ValueError("protected model required")
     download_pin(
-        "windows-runtime" if args.platform == "windows-x64" else "macos-runtime", args.work
+        "windows-runtime" if args.platform == "windows-x64" else "macos-runtime",
+        args.work,
     )
     print("Verified pinned build inputs for " + args.platform)
 

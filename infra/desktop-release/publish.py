@@ -1,4 +1,4 @@
-"""Sign tested CI artifacts with Sparkle, then publish through short-lived GitHub OIDC."""
+"""Sign tested artifacts with Sparkle and publish through GitHub OIDC."""
 
 import base64
 import json
@@ -27,8 +27,12 @@ ENDPOINT = ORIGIN + "/_deploy/releases"
 
 def token():
     request = Request(
-        os.environ["ACTIONS_ID_TOKEN_REQUEST_URL"] + "&" + urlencode({"audience": ENDPOINT}),
-        headers={"Authorization": "Bearer " + os.environ["ACTIONS_ID_TOKEN_REQUEST_TOKEN"]},
+        os.environ["ACTIONS_ID_TOKEN_REQUEST_URL"]
+        + "&"
+        + urlencode({"audience": ENDPOINT}),
+        headers={
+            "Authorization": "Bearer " + os.environ["ACTIONS_ID_TOKEN_REQUEST_TOKEN"]
+        },
     )
     with urlopen(request, timeout=20) as response:
         return json.load(response)["value"]
@@ -58,7 +62,8 @@ def main():
     seed = os.environ.pop("AIRA_UPDATE_ED25519_SEED", "")
     if not seed:
         raise SystemExit(
-            "Missing repository secret AIRA_UPDATE_ED25519_SEED; previous release retained"
+            "Missing repository secret AIRA_UPDATE_ED25519_SEED; "
+            "previous release retained"
         )
     home_secret = Path.home() / "secrets.env"
     if home_secret.exists():
@@ -101,7 +106,9 @@ def main():
         }
         for platform in PLATFORMS:
             source = artifacts / platform / filename(platform, version)
-            receipt = json.loads((artifacts / platform / (platform + ".json")).read_text())
+            receipt = json.loads(
+                (artifacts / platform / (platform + ".json")).read_text()
+            )
             expected = {
                 "platform": platform,
                 "sha": metadata["sha"],
@@ -138,14 +145,17 @@ def main():
             # Use only the public key for independent verification, never Keychain.
             import mmap
 
-            from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+            from cryptography.hazmat.primitives.asymmetric.ed25519 import (
+                Ed25519PublicKey,
+            )
 
             with (
                 source.open("rb") as stream,
                 mmap.mmap(stream.fileno(), 0, access=mmap.ACCESS_READ) as data,
             ):
                 Ed25519PublicKey.from_public_bytes(base64.b64decode(PUBLIC_KEY)).verify(
-                    base64.b64decode(enclosure.attrib["{" + SPARKLE + "}edSignature"]), data
+                    base64.b64decode(enclosure.attrib["{" + SPARKLE + "}edSignature"]),
+                    data,
                 )
             metadata["platforms"][platform] = expected
             metadata["feeds"][platform] = base64.b64encode(feed).decode()
@@ -163,7 +173,9 @@ def main():
                     },
                 )
         receipt = send(
-            "/promote", json.dumps(metadata).encode(), {"Content-Type": "application/json"}
+            "/promote",
+            json.dumps(metadata).encode(),
+            {"Content-Type": "application/json"},
         )
         if receipt["sha"] != metadata["sha"] or receipt["version"] != version:
             raise ValueError("promotion receipt mismatch")
@@ -176,10 +188,14 @@ def main():
             with urlopen(Request(record["url"], method="HEAD"), timeout=20) as response:
                 if int(response.headers["Content-Length"]) != record["bytes"]:
                     raise ValueError("public installer size mismatch")
-            with urlopen(ORIGIN + "/updates/" + platform + ".xml", timeout=20) as response:
+            with urlopen(
+                ORIGIN + "/updates/" + platform + ".xml", timeout=20
+            ) as response:
                 if response.read() != base64.b64decode(metadata["feeds"][platform]):
                     raise ValueError("public update feed mismatch")
-        print("Published signed Windows and Mac " + version + " from " + metadata["sha"])
+        print(
+            "Published signed Windows and Mac " + version + " from " + metadata["sha"]
+        )
     finally:
         home_secret.unlink(missing_ok=True)
 
@@ -197,4 +213,6 @@ if __name__ == "__main__":
         InvalidSignature,
         ET.ParseError,
     ) as error:
-        raise SystemExit("Desktop publication failed: " + type(error).__name__) from None
+        raise SystemExit(
+            "Desktop publication failed: " + type(error).__name__
+        ) from None

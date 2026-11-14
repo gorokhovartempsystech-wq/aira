@@ -66,7 +66,12 @@ class ReleaseTests(unittest.TestCase):
         self.public = base64.b64encode(
             self.key.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
         ).decode()
-        self.claims = {"sha": "a" * 40, "run_number": "3", "run_id": "100", "run_attempt": "1"}
+        self.claims = {
+            "sha": "a" * 40,
+            "run_number": "3",
+            "run_id": "100",
+            "run_attempt": "1",
+        }
         self.version, self.build, _ = server.identity(self.claims)
         self.document = {
             "sha": self.claims["sha"],
@@ -95,7 +100,11 @@ class ReleaseTests(unittest.TestCase):
 
     def promote(self, document=None, claims=None):
         return server.promote(
-            self.root, self.downloads, claims or self.claims, document or self.document, self.public
+            self.root,
+            self.downloads,
+            claims or self.claims,
+            document or self.document,
+            self.public,
         )
 
     def test_signed_pair_is_atomic_and_retry_is_idempotent(self):
@@ -108,7 +117,9 @@ class ReleaseTests(unittest.TestCase):
         self.assertEqual(json.loads((pointer / "releases.json").read_text()), receipt)
         for platform in common.PLATFORMS:
             record = receipt["platforms"][platform]
-            self.assertEqual(common.digest(self.downloads / record["filename"]), record["sha256"])
+            self.assertEqual(
+                common.digest(self.downloads / record["filename"]), record["sha256"]
+            )
             self.assertEqual(
                 (pointer / (platform + ".xml")).read_bytes(),
                 base64.b64decode(self.document["feeds"][platform]),
@@ -135,7 +146,9 @@ class ReleaseTests(unittest.TestCase):
 
     def test_unsigned_mac_feed_is_rejected(self):
         bad = deepcopy(self.document)
-        feed = base64.b64decode(bad["feeds"]["macos-arm64"]).split(b"<!-- sparkle-signatures:")[0]
+        feed = base64.b64decode(bad["feeds"]["macos-arm64"]).split(
+            b"<!-- sparkle-signatures:"
+        )[0]
         bad["feeds"]["macos-arm64"] = base64.b64encode(feed).decode()
         with self.assertRaises(ValueError):
             self.promote(bad)
@@ -147,7 +160,9 @@ class ReleaseTests(unittest.TestCase):
             bad["platforms"]["windows-x64"][field] = value
             with self.assertRaises(ValueError):
                 self.promote(bad)
-        source = self.root / "uploads/100-1" / common.filename("windows-x64", self.version)
+        source = (
+            self.root / "uploads/100-1" / common.filename("windows-x64", self.version)
+        )
         source.write_bytes(b"changed bytes")
         with self.assertRaises(ValueError):
             self.promote()
@@ -165,7 +180,12 @@ class ReleaseTests(unittest.TestCase):
         for data, length, expected in [(b"small", 8, "0" * 64), (b"bad", 3, "0" * 64)]:
             with self.assertRaises(ValueError):
                 server.upload(
-                    self.root, self.claims, "windows-x64", io.BytesIO(data), length, expected
+                    self.root,
+                    self.claims,
+                    "windows-x64",
+                    io.BytesIO(data),
+                    length,
+                    expected,
                 )
         self.assertEqual(list(self.downloads.iterdir()), [])
 
@@ -174,12 +194,16 @@ class ReleaseTests(unittest.TestCase):
         (self.downloads / name).write_bytes(b"previous immutable release")
         with self.assertRaises(ValueError):
             self.promote()
-        self.assertEqual((self.downloads / name).read_bytes(), b"previous immutable release")
+        self.assertEqual(
+            (self.downloads / name).read_bytes(), b"previous immutable release"
+        )
         self.assertFalse((self.root / "current").exists())
 
     def test_unauthorized_http_cannot_write(self):
         handler = type(
-            "FixtureHandler", (server.Handler,), {"root": self.root, "downloads": self.downloads}
+            "FixtureHandler",
+            (server.Handler,),
+            {"root": self.root, "downloads": self.downloads},
         )
         http = HTTPServer(("127.0.0.1", 0), handler)
         thread = threading.Thread(target=http.serve_forever)
@@ -234,7 +258,9 @@ class ReleaseTests(unittest.TestCase):
                 },
             )
             with urlopen(request, timeout=3) as response:
-                self.assertEqual(json.load(response)["sha256"], hashlib.sha256(data).hexdigest())
+                self.assertEqual(
+                    json.load(response)["sha256"], hashlib.sha256(data).hexdigest()
+                )
             request = Request(
                 origin + "/promote",
                 data=json.dumps(self.document).encode(),

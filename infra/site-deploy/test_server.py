@@ -57,18 +57,26 @@ class DeploymentTests(unittest.TestCase):
         header = encode(b'{"alg":"RS256","typ":"JWT","kid":"synthetic"}')
         payload = encode(json.dumps(self.claims if claims is None else claims).encode())
         signed = (header + "." + payload).encode()
-        signature = (private or self.private).sign(signed, padding.PKCS1v15(), hashes.SHA256())
+        signature = (private or self.private).sign(
+            signed, padding.PKCS1v15(), hashes.SHA256()
+        )
         return signed.decode() + "." + encode(signature)
 
     def test_valid_main_token(self):
         self.assertEqual(self.verifier.verify(self.token(), now=1100), self.claims)
 
     def test_separate_publishers_require_their_own_workflow_and_audience(self):
-        verifier = server.Verifier(workflow="other/main-workflow", audience="other-service")
+        verifier = server.Verifier(
+            workflow="other/main-workflow", audience="other-service"
+        )
         verifier.key = self.verifier.key
         with self.assertRaises(ValueError):
             verifier.verify(self.token(), now=1100)
-        claims = {**self.claims, "workflow_ref": "other/main-workflow", "aud": "other-service"}
+        claims = {
+            **self.claims,
+            "workflow_ref": "other/main-workflow",
+            "aud": "other-service",
+        }
         self.assertEqual(verifier.verify(self.token(claims), now=1100), claims)
         with self.assertRaises(ValueError):
             self.verifier.verify(self.token(claims), now=1100)
@@ -120,12 +128,19 @@ class DeploymentTests(unittest.TestCase):
         next_run = {**self.claims, "run_id": "101"}
         server.publish(self.root, updated, next_run)
         self.assertEqual((self.root / "current/index.html").read_text(), "updated page")
-        self.assertEqual((first / "index.html").read_text(), self.document["files"]["index.html"])
+        self.assertEqual(
+            (first / "index.html").read_text(), self.document["files"]["index.html"]
+        )
 
     def test_reject_unsafe_files_sha_and_stale_runs_without_changes(self):
         server.publish(self.root, self.document, self.claims)
         first = (self.root / "current").resolve()
-        for name in ("../escape", "downloads/installer.exe", "deployment.json", "/etc/passwd"):
+        for name in (
+            "../escape",
+            "downloads/installer.exe",
+            "deployment.json",
+            "/etc/passwd",
+        ):
             bad = deepcopy(self.document)
             bad["files"][name] = "bad"
             with self.assertRaises(ValueError):
@@ -156,7 +171,9 @@ class DeploymentTests(unittest.TestCase):
         thread.start()
         try:
             request = Request(
-                f"http://127.0.0.1:{http.server_port}" + server.ENDPOINT, data=b"{}", method="POST"
+                f"http://127.0.0.1:{http.server_port}" + server.ENDPOINT,
+                data=b"{}",
+                method="POST",
             )
             with self.assertRaises(HTTPError) as error:
                 urlopen(request, timeout=3)
@@ -189,7 +206,10 @@ class DeploymentTests(unittest.TestCase):
                 "Content-Type": "application/json",
             }
             request = Request(
-                endpoint, data=json.dumps(self.document).encode(), headers=headers, method="POST"
+                endpoint,
+                data=json.dumps(self.document).encode(),
+                headers=headers,
+                method="POST",
             )
             with urlopen(request, timeout=3) as response:
                 receipt = json.load(response)
