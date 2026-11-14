@@ -35,6 +35,7 @@ jobs:
             -e PGDATA="$data" -v "$data:$data" -v "$socket:$socket" \
             postgres:18 -h '' -k "$socket"
           for attempt in $(seq 1 60); do
+            if [ "$(docker inspect --format '{{.State.Running}}' aira-admin-test)" != true ]; then docker logs aira-admin-test; exit 1; fi
             if docker exec aira-admin-test sh -c 'test "$(cat /proc/1/comm)" = postgres' && docker exec aira-admin-test pg_isready -h "$socket" -U "$(id -un)"; then exit 0; fi
             sleep 1
           done
@@ -50,4 +51,6 @@ jobs:
           python -c 'import glob,os,zipfile; p=glob.glob(os.environ["RUNNER_TEMP"]+"/admin-wheel/*.whl")[0]; z=zipfile.ZipFile(p); assert all("ara/license_admin/static/"+n in z.namelist() for n in ["index.html","admin.css","admin.js"])'
       - name: Stop disposable database
         if: always()
-        run: docker rm -f aira-admin-test || true
+        run: |
+          docker logs aira-admin-test || true
+          docker rm -f aira-admin-test || true
