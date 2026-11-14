@@ -239,7 +239,7 @@ class Server:
         self.error = None
 
     def start(self, pg_port, say):
-        from aira_startup import Progress, database_url, startup_error, wait_started
+        from aira_startup import Progress, StartupError, database_url, wait_started
         progress = Progress(say)
         progress("prepare")
         configure_static_types()
@@ -258,16 +258,15 @@ class Server:
         from ara.desktop.access import new_session_token
         from ara.desktop.data_home import open_home
         from ara.model_protection.bundle import configuration
-        from ara.model_protection.integration import make_license_client
-        from aira_licensed_app import NativeApplication
+        from aira_licensed_app import NativeApplication, create_license_client
 
         updates = json.loads((APP / "launcher/release-config.json").read_text())
         self.license_home = open_home(DATA / "state-v2")
-        self.license_client = make_license_client(updates["license_origin"], self.license_home.path("license"), MODEL / "models")
+        self.license_client = create_license_client(APP / "launcher/release-config.json", self.license_home.path("license"), MODEL / "models")
         token = new_session_token()
         ready = threading.Event()
         def startup_failed(error):
-            self.error = startup_error(error)
+            self.error = error
         app = aira_host.build_app(database_url=database_url(pg_port),
                                   runtime_root=RUNTIME, port=port, analysis=analysis, initialize=True,
                                   onboarding_path=DATA / "onboarding.json",
@@ -290,12 +289,21 @@ class Server:
                 self.server.run()
             except BaseException as e:  # noqa: BLE001
                 if self.error is None:
-                    self.error = startup_error(e)
+                    self.error = e
                 traceback.print_exc()
 
         self.thread = threading.Thread(target=serve, name="aira-server", daemon=True)
         self.thread.start()
-        wait_started(self.server, self.thread, lambda: self.error, progress)
+        def current_error():
+            code = self.application.startup_error
+            if code and not isinstance(getattr(self.error, "code", None), str):
+                return LaunchError("Сервер AIRA не запустился.", code=code)
+            return self.error
+        try:
+            wait_started(self.server, self.thread, current_error, progress, timeout=STARTUP_TIMEOUT)
+        except StartupError as error:
+            self.server.should_exit = True
+            raise LaunchError(str(error), code=error.code) from self.error
         STATE.write_text(json.dumps({"url": self.url, "pid": os.getpid()}), encoding="utf-8")
         return self.url
 
@@ -693,10 +701,10 @@ def main():
             return
     except Exception as error:
         print("Update check unavailable:", type(error).__name__, flush=True)
-    if os.environ.get("AIRA_BROWSER_MODE") or "--browser" in sys.argv:
-        ctypes.windll.user32.MessageBoxW(None, "Эта сборка AIRA работает в окне приложения. Запустите её обычным ярлыком.", "AIRA", 0x40)
-        return
     try:
+        if os.environ.get("AIRA_BROWSER_MODE") or "--browser" in sys.argv:
+            raise LaunchError("Для этой версии AIRA нужен Microsoft Edge WebView2 Runtime. "
+                              "Лицензированное приложение работает в собственном окне.")
         if run_desktop(log):
             # The old backend/PostgreSQL have stopped; the new process starts with WinSparkle.
             kernel.CloseHandle(mutex)
@@ -704,9 +712,11 @@ def main():
             subprocess.Popen([str(PY / "pythonw.exe"), str(Path(__file__).resolve())],
                              creationflags=NO_WINDOW, stdin=subprocess.DEVNULL,
                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    except Exception:
+    except Exception as error:
         traceback.print_exc()
-        ctypes.windll.user32.MessageBoxW(None, "Не удалось открыть окно AIRA. Проверьте установку Microsoft Edge WebView2 Runtime и повторите запуск. Подробности — в журнале AIRA.", "AIRA", 0x10)
+        message = str(error) if isinstance(error, LaunchError) else "Не удалось открыть окно AIRA. Проверьте установку Microsoft Edge WebView2 Runtime."
+        ctypes.windll.user32.MessageBoxW(None, message + "\nПодробности — в журнале AIRA.", "AIRA", 0x10)
+        raise SystemExit(1) from None
     finally:
         if mutex:
             kernel.CloseHandle(mutex)
