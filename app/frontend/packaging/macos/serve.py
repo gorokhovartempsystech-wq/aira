@@ -34,7 +34,8 @@ class NativeApplication:
     async def __call__(self, scope, receive, send):
         path = scope.get("path", "")
         if scope["type"] == "http" and (
-            path in {"/aira", "/aira/", "/aira/diagnostics/log", "/aira/diagnostics/client"}
+            path in {"/aira", "/aira/", "/aira/diagnostics/log", "/aira/diagnostics/client",
+                     "/aira/onboarding", "/aira/onboarding/start", "/aira/onboarding/doc", "/aira/updates"}
             or path.startswith(("/aira/assets/", "/aira/client/"))
         ):
             await self.app(scope, receive, send)
@@ -100,6 +101,7 @@ def serve(data, license_origin, handshake):
                     token = new_session_token()
                     app = build_app(database_url=url.render_as_string(hide_password=False),
                                     runtime_root=home.path("analysis"), port=http_port,
+                                    onboarding_path=data / "onboarding.json", app_update=update_configuration(),
                                     analysis="model", native_token=token.hex(), log_file=data / "aira.log",
                                     model_key_provider=client.require_model_key if configuration(models) else None)
                     client.start()
@@ -115,6 +117,15 @@ def serve(data, license_origin, handshake):
             raise RuntimeError("License cleanup was not confirmed")
         if not home.close():
             raise RuntimeError("Data home cleanup was not confirmed")
+
+
+def update_configuration():
+    import plistlib
+
+    with (PAYLOAD.parent.parent / "Info.plist").open("rb") as stream:
+        info = plistlib.load(stream)
+    return {"feed_url": info["SUFeedURL"], "version": info["CFBundleShortVersionString"],
+            "build": info["CFBundleVersion"], "platform": "macos-arm64"}
 
 
 def main():

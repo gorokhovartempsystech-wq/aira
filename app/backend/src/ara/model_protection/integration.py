@@ -23,7 +23,8 @@ class NativeApplication:
     async def __call__(self, scope, receive, send):
         path = scope.get("path", "")
         if scope["type"] == "http" and (
-            path in {"/aira", "/aira/", "/aira/diagnostics/log", "/aira/diagnostics/client"}
+            path in {"/aira", "/aira/", "/aira/diagnostics/log", "/aira/diagnostics/client",
+                     "/aira/onboarding", "/aira/onboarding/start", "/aira/onboarding/doc", "/aira/updates"}
             or path.startswith(("/aira/assets/", "/aira/client/"))
         ):
             await self.app(scope, receive, send)

@@ -260,6 +260,9 @@ class Server:
             self.error = startup_error(error)
         app = aira_host.build_app(database_url=database_url(pg_port),
                                   runtime_root=RUNTIME, port=port, analysis=analysis, initialize=True,
+                                  onboarding_path=DATA / "onboarding.json",
+                                  app_update={"feed_url": updates["origin"].rstrip("/") + "/updates/windows-x64.xml",
+                                              "version": version(), "platform": "windows-x64"},
                                   on_ready=ready.set, log_file=LOGS / "aira.log", native_token=token.hex(),
                                   model_key_provider=self.license_client.require_model_key if configuration(MODEL / "models") else None,
                                   startup_progress=progress, on_startup_error=startup_failed,
@@ -363,6 +366,31 @@ class DesktopApi:
     def app_version(self):
         return version()
 
+    def _require_native_page(self):
+        from urllib.parse import urlsplit
+
+        try:
+            current = urlsplit(self._ctx["window"].get_current_url())
+            expected = urlsplit(self._ctx["server"].url)
+            trusted = (current.scheme == expected.scheme == "http"
+                       and current.hostname == expected.hostname == "127.0.0.1"
+                       and current.port == expected.port and expected.port is not None
+                       and current.path == expected.path == "/aira/"
+                       and not current.username and not current.password and not current.query)
+        except (TypeError, ValueError):
+            trusted = False
+        if not trusted:
+            raise LaunchError("Обновление доступно только в окне AIRA.")
+
+    def request_update(self):
+        self._require_native_page()
+        if self._ctx["closing"] or self._ctx["allow_close"]:
+            return False
+        self._ctx["update_requested"] = True
+        # The native close handshake first waits for this RPC reply to reach JS.
+        self._ctx["request_update"]()
+        return True
+
     def open_logs(self):
         os.startfile(str(LOGS))
 
@@ -416,7 +444,7 @@ def run_desktop(log):
 
     ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("AIRA.Desktop")
     ctx = {"server": Server(), "state": {"pg": None}, "allow_close": False, "closing": False, "window": None,
-           "closed": threading.Event()}
+           "closed": threading.Event(), "update_requested": False}
     logo = "data:image/png;base64," + __import__("base64").b64encode((FRONTEND / "static" / "logo.png").read_bytes()).decode()
     window = webview.create_window("AIRA", html=SPLASH.replace("LOGO", logo), js_api=DesktopApi(ctx),
                                    width=1380, height=900, min_size=(1000, 640))
@@ -431,7 +459,7 @@ def run_desktop(log):
     def ask(title, text):
         return window.create_confirmation_dialog(title, text)
 
-    def on_closing():
+    def on_closing(wait_for_update_ack=False):
         server = ctx["server"]
         if ctx["allow_close"] or not server.url:
             return True
@@ -442,13 +470,18 @@ def run_desktop(log):
                 print(f"close requested, page answered: {ok}", flush=True)
                 ctx["closing"] = False
                 ctx["allow_close"] = ok
+                if not ok:
+                    ctx["update_requested"] = False
             def error(exc):
                 ctx["closing"] = False
                 ctx["allow_close"] = False
+                ctx["update_requested"] = False
                 print("close handshake failed:", type(exc).__name__, flush=True)
-            request_window_close(window, ctx["closed"], result, error)
+            request_window_close(window, ctx["closed"], result, error,
+                                 wait_for_update_ack=wait_for_update_ack)
         return False
 
+    ctx["request_update"] = lambda: on_closing(wait_for_update_ack=True)
     window.events.closing += on_closing
     window.events.closed += ctx["closed"].set
 
@@ -488,6 +521,7 @@ def run_desktop(log):
     finally:
         ctx["closed"].set()
         shutdown_backend(ctx["server"])
+    return ctx["update_requested"]
 
 
 # ---------- запасной режим: окно управления + браузер (если нет WebView2) ----------
@@ -599,8 +633,14 @@ def main():
         stop_postgres()
         return
     kernel = ctypes.windll.kernel32
-    kernel.CreateMutexW(None, False, MUTEX)
+    kernel.CreateMutexW.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_wchar_p]
+    kernel.CreateMutexW.restype = ctypes.c_void_p
+    kernel.CloseHandle.argtypes = [ctypes.c_void_p]
+    mutex = kernel.CreateMutexW(None, False, MUTEX)
+    if not mutex:
+        raise LaunchError("Не удалось подготовить запуск AIRA.")
     if kernel.GetLastError() == 183:
+        kernel.CloseHandle(mutex)
         focus_running()
         return
     log = open_log()
@@ -615,10 +655,19 @@ def main():
         ctypes.windll.user32.MessageBoxW(None, "Эта сборка AIRA работает в окне приложения. Запустите её обычным ярлыком.", "AIRA", 0x40)
         return
     try:
-        run_desktop(log)
+        if run_desktop(log):
+            # The old backend/PostgreSQL have stopped; the new process starts with WinSparkle.
+            kernel.CloseHandle(mutex)
+            mutex = None
+            subprocess.Popen([str(PY / "pythonw.exe"), str(Path(__file__).resolve())],
+                             creationflags=NO_WINDOW, stdin=subprocess.DEVNULL,
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except Exception:
         traceback.print_exc()
         ctypes.windll.user32.MessageBoxW(None, "Не удалось открыть окно AIRA. Проверьте установку Microsoft Edge WebView2 Runtime и повторите запуск. Подробности — в журнале AIRA.", "AIRA", 0x10)
+    finally:
+        if mutex:
+            kernel.CloseHandle(mutex)
 
 
 if __name__ == "__main__":

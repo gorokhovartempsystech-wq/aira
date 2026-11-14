@@ -10,6 +10,8 @@ import { createReviewPanel, blockersNode } from './review.mjs';
 import { buildExampleDocx, EXAMPLE_TITLE } from './example-docx.mjs';
 import { meerkat, mascotAlert, sound, oyoy } from './mascot.mjs';
 import { runTour, tourActive } from './tour.mjs';
+import { createOnboarding } from './onboarding.mjs';
+import { createUpdates } from './updates.mjs';
 
 const MAX_DOCX = 32 * 1024 * 1024;
 const store = {
@@ -18,7 +20,7 @@ const store = {
 };
 
 const app = {
-  host: null, api: null, workspace: null, importer: null,
+  host: null, api: null, workspace: null, importer: null, updates: null,
   docs: [], editors: new Map(), activeId: null, opening: null,
   examples: new Set(store.get('aira.examples', [])),
   // Бэкенд не удаляет документы: «Убрать из списка» скрывает их только в этом списке на этом компьютере.
@@ -44,6 +46,7 @@ async function boot() {
   app.api = createApi(app.host);
   const ok = await licenceGate();
   if (!ok) return;
+  await onboarding.load();
   const conn = { origin: app.host.origin, sessionToken: app.host.sessionToken };
   app.workspace = createConnectedWorkspace({ ...conn, onState: () => onWorkspaceState() });
   app.importer = createConnectedImporter({ ...conn, onState: () => scheduleRender() });
@@ -59,7 +62,12 @@ async function boot() {
   applyZoom();
   await refreshDocs();
   showStart();
-  if (!store.get(TOURS.start, false)) setTimeout(() => startTour('start'), 500);
+  if (!onboarding.handled('start')) setTimeout(() => {
+    if (!app.activeId && !tourActive() && !$('#modal-root').children.length) startTour('start');
+  }, 500);
+  app.updates = createUpdates({ api: app.api, host: app.host, parent: $('#app') });
+  void app.updates.check();
+  setInterval(() => void app.updates.check(), 3600000);
 }
 
 function fatal(title, text) {
@@ -324,7 +332,7 @@ async function autosave(id) {
 
 // Обучение по документу — при первом открытии, когда на экране нет окон и другого обучения.
 function maybeDocTour(tries = 30) {
-  if (store.get(TOURS.doc, false) || !app.activeId) return;
+  if (onboarding.handled('doc') || !app.activeId) return;
   if (tourActive() || $('#modal-root').children.length) { if (tries) setTimeout(() => maybeDocTour(tries - 1), 500); return; }
   startTour('doc');
 }
@@ -482,6 +490,7 @@ function anyUnconfirmed() {
 // Shell shutdown handshake: every accepted edit is written to a working copy before quitting.
 // Never forces: on failure the user decides to retry or keep the app open.
 async function prepareToClose() {
+  await onboarding.flush();
   if (!app.workspace) return true;
   const ov = overlay('Сохраняем рабочие копии перед закрытием…');
   try {
@@ -536,7 +545,7 @@ function renderChrome() {
   document.body.classList.toggle('no-sidebar', !app.sidebar);
   document.body.classList.toggle('drawer-closed', !app.drawer || !app.activeId);
   // После обучения карточка учебного примера уходит со стартового экрана — он остаётся в меню «?».
-  $('#start [data-start="example"]').hidden = store.get(TOURS.start, false) && !tourActive();
+  $('#start [data-start="example"]').hidden = onboarding.handled('start') && !tourActive();
   document.body.classList.toggle('has-doc', !!app.activeId);
   $('#licence-banner').hidden = !app.licenceLocked;
   renderSidebar();
@@ -652,6 +661,15 @@ function applyZoom() {
    Начальное обучение с сурикатом
    ========================================================= */
 const TOURS = { start: 'aira.tour.start', doc: 'aira.tour.doc' };
+let onboardingNotice = false;
+const onboarding = createOnboarding({
+  read: () => app.api.onboarding(), write: (kind, status) => app.api.markOnboarding(kind, status),
+  legacy: kind => store.get(TOURS[kind], false) === true,
+  onError: () => {
+    if (!onboardingNotice) toast('Не удалось сохранить или прочитать состояние обучения. Обучение доступно через «?».', 'warn');
+    onboardingNotice = true;
+  },
+});
 
 function legend() {
   return h('div', { class: 'tour-legend' }, [['formulation', 'Формулировки'], ['duplicate', 'Дубли'], ['contradiction', 'Противоречия'], ['question', 'Вопросы']]
@@ -702,7 +720,10 @@ function docSteps() {
 function startTour(kind) {
   if (kind === 'doc' && !app.activeId) kind = 'start';
   if (kind === 'start') showStart();
-  runTour(kind === 'doc' ? docSteps() : startSteps(), { onFinish: () => { store.set(TOURS[kind], true); scheduleRender(); } });
+  runTour(kind === 'doc' ? docSteps() : startSteps(), { onFinish: (done, result) => {
+    if (done) void onboarding.finish(kind, result);
+    scheduleRender();
+  } });
   renderChrome();
 }
 
@@ -750,6 +771,7 @@ function helpMenu() {
     item('help', app.activeId ? 'Обучение: работа с документом' : 'Пройти обучение', () => startTour(app.activeId ? 'doc' : 'start')),
     app.activeId ? item('help', 'Обучение: стартовый экран', () => startTour('start')) : null,
     item('book', 'Открыть учебный пример', () => openExample()),
+    app.host.checkUpdates ? item('download', 'Проверить обновления', () => app.updates?.check(true)) : null,
     h('div', { class: 'menu-sep' }),
     item(sound.on ? 'volume' : 'volume-off', sound.on ? 'Звук сурката: включён' : 'Звук сурката: выключен', () => {
       sound.on = !sound.on;

@@ -12,11 +12,12 @@ export class ApiError extends Error {
 }
 
 export function createApi({ origin, sessionToken }) {
-  async function request(path, { method = 'GET', json, binary = false } = {}) {
+  async function request(path, { method = 'GET', json, binary = false, timeoutMs } = {}) {
     let r;
     try {
       r = await fetch(origin + path, {
         method,
+        ...(timeoutMs ? { signal: AbortSignal.timeout(timeoutMs) } : {}),
         headers: { 'X-AIRA-Session': sessionToken, Accept: binary ? '*/*' : 'application/json',
           ...(json !== undefined ? { 'Content-Type': 'application/json' } : {}) },
         body: json !== undefined ? JSON.stringify(json) : undefined,
@@ -33,6 +34,11 @@ export function createApi({ origin, sessionToken }) {
   }
   const doc = id => `/docx-documents/${id}`;
   return {
+    onboarding: () => request('/aira/onboarding', { timeoutMs: 5000 }).then(x => x.body),
+    markOnboarding: (kind, status) => request(`/aira/onboarding/${kind}`, {
+      method: 'POST', json: { status }, timeoutMs: 5000,
+    }).then(x => x.body),
+    updates: (refresh = false) => request('/aira/updates' + (refresh ? '?refresh=1' : ''), { timeoutMs: 10000 }).then(x => x.body),
     async listDocuments() {
       const { body } = await request('/docx-documents');
       return Array.isArray(body?.items) ? body.items : [];
