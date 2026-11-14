@@ -16,6 +16,17 @@ spec.loader.exec_module(startup)
 
 
 class Startup(unittest.TestCase):
+    def test_launcher_database_url_is_accepted_by_strict_supervisor(self):
+        from ara.config import DatabaseSettings
+        from ara.docx_analysis_worker.supervisor.database import create_engines
+        engines = create_engines(DatabaseSettings(startup.database_url(47432)))
+        try:
+            self.assertEqual(dict(engines.control.url.query), {'connect_timeout':'5'})
+            self.assertEqual(engines.control.url.host, '127.0.0.1')
+            self.assertEqual(engines.control.url.port, 47432)
+        finally:
+            engines.dispose()
+
     def test_real_uvicorn_lifespan_failure_retains_recovery_reason(self):
         import uvicorn
         from fastapi import FastAPI

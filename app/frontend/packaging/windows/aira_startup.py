@@ -16,6 +16,14 @@ class StartupError(RuntimeError):
         super().__init__(message)
 
 
+def database_url(port):
+    # The supervisor validates URL options and applies its own stricter SQL limits.
+    # Main editor limits belong to its separate engine's connect_args.
+    from sqlalchemy import URL
+    return URL.create("postgresql+psycopg", username="postgres", host="127.0.0.1",
+                      port=port, database="aira", query={"connect_timeout": "5"}).render_as_string(hide_password=False)
+
+
 def startup_error(error):
     if isinstance(error, StartupError):
         return error

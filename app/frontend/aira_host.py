@@ -183,7 +183,7 @@ def licence_stub_routes(app):
 def build_app(*, database_url, runtime_root, port, analysis="model", initialize=True,
               licence_stub=False, dev=False, dev_pages=None, on_ready=None, log_file=None,
               native_token=None, model_key_provider=None, startup_progress=None,
-              on_startup_error=None):
+              on_startup_error=None, database_connect_args=None):
     """Возвращает ASGI-приложение. Воркер анализа запускается и останавливается в lifespan."""
     from sqlalchemy import create_engine
 
@@ -193,7 +193,8 @@ def build_app(*, database_url, runtime_root, port, analysis="model", initialize=
 
     root = private_root(runtime_root)
     settings = DatabaseSettings(database_url)
-    engine = create_engine(settings.database_url.get_secret_value(), hide_parameters=True)
+    engine = create_engine(settings.database_url.get_secret_value(), hide_parameters=True,
+                           connect_args=database_connect_args or {})
     if initialize:
         if startup_progress:
             startup_progress("database")

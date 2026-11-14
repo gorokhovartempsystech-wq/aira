@@ -233,7 +233,7 @@ class Server:
         self.error = None
 
     def start(self, pg_port, say):
-        from aira_startup import Progress, startup_error, wait_started
+        from aira_startup import Progress, database_url, startup_error, wait_started
         progress = Progress(say)
         progress("prepare")
         configure_static_types()
@@ -258,14 +258,12 @@ class Server:
         ready = threading.Event()
         def startup_failed(error):
             self.error = startup_error(error)
-        from sqlalchemy import URL
-        database_url = URL.create("postgresql+psycopg", username="postgres", host="127.0.0.1", port=pg_port, database="aira",
-                                  query={"connect_timeout": "5", "options": "-c lock_timeout=5000 -c statement_timeout=30000"}).render_as_string(hide_password=False)
-        app = aira_host.build_app(database_url=database_url,
+        app = aira_host.build_app(database_url=database_url(pg_port),
                                   runtime_root=RUNTIME, port=port, analysis=analysis, initialize=True,
                                   on_ready=ready.set, log_file=LOGS / "aira.log", native_token=token.hex(),
                                   model_key_provider=self.license_client.require_model_key if configuration(MODEL / "models") else None,
-                                  startup_progress=progress, on_startup_error=startup_failed)
+                                  startup_progress=progress, on_startup_error=startup_failed,
+                                  database_connect_args={"connect_timeout": 5, "options": "-c lock_timeout=5000 -c statement_timeout=30000"})
         self.connection = dict(app.state.aira_connection)
         self.license_client.start()
         protected_app = NativeApplication(app, self.license_client, f"http://127.0.0.1:{port}", token)
