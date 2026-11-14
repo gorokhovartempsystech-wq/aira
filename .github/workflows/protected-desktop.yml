@@ -15,6 +15,7 @@ jobs:
         with:
           python-version: '3.12'
       - name: Verified protected model and existing PostgreSQL distribution
+        timeout-minutes: 15
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -29,10 +30,14 @@ jobs:
           Write-Host 'Encrypted model hash verified and archive extracted'
           $old = Join-Path $work 'old.exe'
           Write-Host 'Downloading pinned PostgreSQL source installer'
-          Invoke-WebRequest 'https://51.250.81.70/downloads/AIRA-Setup-0.2.0.exe' -OutFile $old -TimeoutSec 600
+          curl.exe --fail --silent --show-error --connect-timeout 20 --max-time 300 --retry 2 --retry-max-time 600 --output $old 'https://51.250.81.70/downloads/AIRA-Setup-0.2.0.exe'
+          if ($LASTEXITCODE) { throw 'Pinned runtime download failed' }
           if ((Get-FileHash $old -Algorithm SHA256).Hash.ToLower() -ne '01717fdeadcdb2ea5aa057e9e4330a2b6941167d962686ec5a439e549771a9fa') { throw 'PostgreSQL source installer hash mismatch' }
+          Write-Host 'Pinned runtime download hash verified; starting extraction'
           $legacy = Join-Path $work 'legacy'
-          $install = Start-Process $old -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/SP-','/NORESTART',"/DIR=$legacy") -Wait -PassThru
+          $install = Start-Process $old -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/SP-','/NORESTART',"/DIR=$legacy", "/LOG=$work\legacy-install.log") -PassThru
+          if (-not $install.WaitForExit(300000)) { throw 'Pinned runtime extraction timed out' }
+          $install.Refresh()
           Write-Host 'Pinned runtime extracted'
           if ($install.ExitCode -ne 0) { throw 'Legacy runtime extraction failed' }
           $version = & "$legacy\pgsql\bin\postgres.exe" --version
