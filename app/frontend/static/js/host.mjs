@@ -32,6 +32,7 @@ export async function connectHost() {
     origin: conn.origin,
     sessionToken: conn.sessionToken,
     native: !!native,
+    checkUpdates: native?.checkUpdates ? () => native.checkUpdates() : null,
     openDocx: native?.openDocx ? () => native.openDocx() : browserPick,
     saveDocx: native?.saveDocx ? (n, b) => native.saveDocx(n, b) : browserDownload,
     saveFile: native?.saveFile ? (n, b, type) => native.saveFile(n, b, type) : null,
@@ -66,6 +67,15 @@ async function desktopBridge() {
   return {
     desktop: true,
     connection: () => api.connection(),
+    checkUpdates: api.request_update ? async () => {
+      let acknowledge;
+      window.__airaUpdateBridgeReady = new Promise(resolve => { acknowledge = resolve; });
+      try {
+        const accepted = await api.request_update();
+        acknowledge(accepted === true);
+        return accepted;
+      } catch (error) { acknowledge(false); throw error; }
+    } : null,
     openDocx: async () => {
       const r = await api.open_docx();
       if (!r) return null;

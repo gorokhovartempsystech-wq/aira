@@ -3,13 +3,15 @@ name: desktop-updates
 on:
   pull_request:
     paths:
-      - "app/frontend/packaging/**"
+      - "app/frontend/**"
+      - "app/backend/src/ara/model_protection/integration.py"
       - "sites/aira-download/**"
       - ".github/workflows/desktop-updates.yml"
   push:
     branches: [main]
     paths:
-      - "app/frontend/packaging/**"
+      - "app/frontend/**"
+      - "app/backend/src/ara/model_protection/integration.py"
       - ".github/workflows/desktop-updates.yml"
 
 permissions:
@@ -29,6 +31,19 @@ jobs:
         with:
           python-version: "3.12"
       - run: python -m pip install python-dotenv==1.2.3
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install UI test dependencies
+        run: python -m pip install fastapi==0.141.1 httpx==0.28.1
+      - name: Profile persistence and safe update handoff
+        run: python -m unittest discover -s app/frontend/tests -p "test_*.py" -v
+      - name: Onboarding and update bridge behavior
+        run: >-
+          node --input-type=module -e
+          "for (const file of ['onboarding.test.mjs', 'host-updates.test.mjs']) {
+          const tests = await import('./app/frontend/tests/' + file);
+          console.log(file, await tests.runTests()); }"
       - name: Portable updater behavior
         run: python -m unittest discover -s app/frontend/packaging/updates -p "test_*.py" -v
       - name: Download verified macOS SDK

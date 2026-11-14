@@ -76,7 +76,7 @@ def wait_started(server, thread, error, progress, *, clock=time.monotonic, sleep
         sleep(0.1)
 
 
-def request_window_close(window, closed, result, error):
+def request_window_close(window, closed, result, error, *, wait_for_update_ack=False):
     """Finish the JS evaluation before destroying its WebView; refuse non-boolean answers."""
     from threading import Event, Thread
 
@@ -91,9 +91,14 @@ def request_window_close(window, closed, result, error):
         try:
             # pywebview's promise callback is one-way. A js_api method instead
             # sends an RPC reply *after* our method returns, possibly after Close.
+            update_ack = (
+                "if ((await window.__airaUpdateBridgeReady) !== true) return false; "
+                if wait_for_update_ack else ""
+            )
             window.evaluate_js(
                 # No bridge yet means the startup/error splash has no editor.
-                "Promise.resolve().then(() => window.__airaRequestClose ? window.__airaRequestClose() : true)",
+                "Promise.resolve().then(async () => { " + update_ack
+                + "return window.__airaRequestClose ? await window.__airaRequestClose() : true; })",
                 callback=receive,
             )
             while not answered.wait(0.1):
