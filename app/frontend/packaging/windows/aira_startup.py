@@ -49,7 +49,11 @@ class Progress:
 
 def wait_started(server, thread, error, progress, *, clock=time.monotonic, sleep=time.sleep, timeout=90):
     deadline = clock() + timeout
-    progress("server")
+    try:
+        progress("server")
+    except StartupError:
+        server.should_exit = True
+        raise
     while not server.started:
         if not thread.is_alive():
             raise startup_error(error())

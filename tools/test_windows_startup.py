@@ -79,5 +79,13 @@ class Startup(unittest.TestCase):
         startup.wait_started(SimpleNamespace(started=True), None, lambda: None, lambda *a: None,
                              sleep=lambda _: self.fail('Ready server must not wait'))
 
+    def test_deadline_already_expired_when_server_thread_starts_requests_stop(self):
+        server = SimpleNamespace(started=False, should_exit=False)
+        def expired(*args):
+            raise startup.StartupError('synthetic deadline', 'startup_timeout')
+        with self.assertRaises(startup.StartupError):
+            startup.wait_started(server, None, lambda: None, expired)
+        self.assertTrue(server.should_exit)
+
 
 if __name__ == '__main__': unittest.main()
