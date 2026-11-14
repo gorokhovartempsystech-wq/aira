@@ -1,0 +1,25 @@
+[Unit]
+Description=AIRA website publisher (GitHub OIDC)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=aira-site-deploy
+Group=aira-site-deploy
+WorkingDirectory=/opt/aira-site-deploy
+ExecStart=/opt/aira-site-deploy/venv/bin/python /opt/aira-site-deploy/server.py
+Restart=on-failure
+UMask=0022
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/aira-site-deploy
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=
+LockPersonality=true
+MemoryMax=192M
+TasksMax=16
+
+[Install]
+WantedBy=multi-user.target
