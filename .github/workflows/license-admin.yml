@@ -35,7 +35,7 @@ jobs:
             -e PGDATA="$data" -v "$data:$data" -v "$socket:$socket" \
             postgres:18 -h '' -k "$socket"
           for attempt in $(seq 1 60); do
-            if docker exec aira-admin-test pg_isready -h "$socket" -U "$(id -un)"; then exit 0; fi
+            if docker exec aira-admin-test sh -c 'test "$(cat /proc/1/comm)" = postgres' && docker exec aira-admin-test pg_isready -h "$socket" -U "$(id -un)"; then exit 0; fi
             sleep 1
           done
           exit 1
