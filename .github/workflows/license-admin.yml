@@ -33,7 +33,7 @@ jobs:
           docker run -d --name aira-admin-test --network none \
             -e POSTGRES_USER="$(id -un)" -e POSTGRES_HOST_AUTH_METHOD=trust \
             -e PGDATA="$data" -v "$data:$data" -v "$socket:$socket" \
-            postgres:18 -h '' -k "$socket"
+            postgres:18 -h '' -k "$socket,/var/run/postgresql"
           for attempt in $(seq 1 60); do
             if [ "$(docker inspect --format '{{.State.Running}}' aira-admin-test)" != true ]; then docker logs aira-admin-test; exit 1; fi
             if docker exec aira-admin-test sh -c 'test "$(cat /proc/1/comm)" = postgres' && docker exec aira-admin-test pg_isready -h "$socket" -U "$(id -un)"; then exit 0; fi
