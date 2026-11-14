@@ -71,9 +71,13 @@ class NativeApplication:
         path = scope.get("path", "")
         public = path in {"/aira", "/aira/"} or path.startswith(("/aira/assets/", "/aira/client/"))
         diagnostic = path in {"/aira/diagnostics/log", "/aira/diagnostics/client"}
+        native_settings = path in {
+            "/aira/onboarding", "/aira/onboarding/start", "/aira/onboarding/doc", "/aira/updates"
+        }
         if scope["type"] == "http" and (
-            (scope.get("method") in {"GET", "HEAD"} and public) or diagnostic
+            (scope.get("method") in {"GET", "HEAD"} and public) or diagnostic or native_settings
         ):
             await self.app(scope, receive, send)
             return
         await self.protected(scope, receive, send)
+

@@ -1,0 +1,56 @@
+name: license-admin
+
+on:
+  pull_request:
+    paths: ["app/backend/src/ara/license_admin/**", "app/backend/tests/acceptance/test_license_admin.py", ".github/workflows/license-admin.yml", "app/backend/pyproject.toml"]
+  push:
+    branches: [main]
+    paths: ["app/backend/src/ara/license_admin/**", "app/backend/tests/acceptance/test_license_admin.py", ".github/workflows/license-admin.yml", "app/backend/pyproject.toml"]
+
+jobs:
+  operator-panel:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: app/backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r requirements.lock
+      - name: Start isolated PostgreSQL 18 without TCP access
+        shell: bash
+        run: |
+          set -euo pipefail
+          fingerprint=$(python -c 'import hashlib,pathlib; print(hashlib.sha256(str(pathlib.Path.cwd().resolve()).encode()).hexdigest()[:16])')
+          socket=/private/tmp/ara-pg-$(id -u)-$fingerprint
+          data=$PWD/.runtime/postgres18/data
+          sudo mkdir -p "$socket"
+          sudo chmod 0777 "$socket"
+          mkdir -p "$data"
+          docker run -d --name aira-admin-test --network none \
+            -e POSTGRES_USER="$(id -un)" -e POSTGRES_HOST_AUTH_METHOD=trust \
+            -e PGDATA="$data" -v "$data:$data" -v "$socket:$socket" \
+            postgres:18 -h '' -k "$socket,/var/run/postgresql"
+          for attempt in $(seq 1 60); do
+            if [ "$(docker inspect --format '{{.State.Running}}' aira-admin-test)" != true ]; then docker logs aira-admin-test; exit 1; fi
+            if docker exec aira-admin-test sh -c 'test "$(cat /proc/1/comm)" = postgres' && docker exec aira-admin-test pg_isready -h "$socket" -U "$(id -un)"; then exit 0; fi
+            sleep 1
+          done
+          exit 1
+      - name: Lint and real PostgreSQL operator acceptance
+        run: |
+          python -m ruff check src/ara/license_admin tests/acceptance/test_license_admin.py
+          python -m ruff format --check src/ara/license_admin tests/acceptance/test_license_admin.py
+          python -m pytest -q tests/acceptance/test_license_admin.py
+      - name: Verify wheel contains operator assets
+        run: |
+          python -m pip wheel --no-deps --no-cache-dir --wheel-dir "$RUNNER_TEMP/admin-wheel" .
+          python -c 'import glob,os,zipfile; p=glob.glob(os.environ["RUNNER_TEMP"]+"/admin-wheel/*.whl")[0]; z=zipfile.ZipFile(p); assert all("ara/license_admin/static/"+n in z.namelist() for n in ["index.html","admin.css","admin.js"])'
+      - name: Stop disposable database
+        if: always()
+        run: |
+          docker logs aira-admin-test || true
+          docker rm -f aira-admin-test || true

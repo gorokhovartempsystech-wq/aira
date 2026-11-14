@@ -38,6 +38,9 @@ jobs:
           cache: pip
           cache-dependency-path: app/backend/requirements.lock
       - run: pip install -r requirements.lock
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
       - name: Focused ML adapter, evidence and DOCX tests (no database or native OS admission)
         run: >-
           python -m pytest -q
@@ -45,3 +48,5 @@ jobs:
           tests/acceptance/test_docx_partial_questions.py
           tests/acceptance/test_field_safe_editor.py
           tests/acceptance/test_docx_word_crm_reader.py
+          tests/acceptance/test_prototype_integration.py
+          tests/acceptance/test_prototype_review_ui.py

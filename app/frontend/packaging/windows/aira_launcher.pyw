@@ -10,6 +10,7 @@
 Данные пользователя: %LOCALAPPDATA%\\AIRA (база, рабочие файлы проверки, журналы).
 Серверная лицензия обязательна при каждом запуске. Native WebView2 передаёт capability
 через мост; браузерный режим этой лицензированной поставки не поддерживается.
+Доступ к зашифрованной модели подтверждается закрытым ключом устройства из Windows Credential Manager.
 """
 
 import ctypes
@@ -73,6 +74,7 @@ def print_environment():
 
 def run(cmd, **kw):
     print("$", " ".join(str(c) for c in cmd), flush=True)
+    kw.setdefault("timeout", 120)
     return subprocess.run([str(c) for c in cmd], creationflags=NO_WINDOW, stdout=sys.stdout, stderr=sys.stdout,
                           stdin=subprocess.DEVNULL, **kw)
 
@@ -173,7 +175,7 @@ def start_postgres(say):
         raise LaunchError("Не удалось запустить базу данных AIRA.")
     import psycopg
 
-    with psycopg.connect(host="127.0.0.1", port=port, user="postgres", dbname="postgres", autocommit=True) as c:
+    with psycopg.connect(host="127.0.0.1", port=port, user="postgres", dbname="postgres", autocommit=True, connect_timeout=5, options="-c statement_timeout=5000") as c:
         if not c.execute("select 1 from pg_database where datname='aira'").fetchone():
             c.execute("create database aira")
     return port
@@ -200,7 +202,7 @@ def stuck_failed_run(pg_port):
     Снимать её безопасно, только если тот запуск уже завершён."""
     import psycopg
 
-    with psycopg.connect(host="127.0.0.1", port=pg_port, user="postgres", dbname="aira") as c:
+    with psycopg.connect(host="127.0.0.1", port=pg_port, user="postgres", dbname="aira", connect_timeout=5, options="-c lock_timeout=2000 -c statement_timeout=5000") as c:
         row = c.execute("select s.run_id from docx_analysis_supervisor s join docx_analysis_runs r on r.id = s.run_id "
                         "where s.slot_key = 1 and s.phase = 'armed' "
                         "and r.status in ('succeeded','failed','cancelled','timed_out')").fetchone()
@@ -210,7 +212,7 @@ def stuck_failed_run(pg_port):
 def clear_stuck_run(pg_port, run_id):
     import psycopg
 
-    with psycopg.connect(host="127.0.0.1", port=pg_port, user="postgres", dbname="aira") as c:
+    with psycopg.connect(host="127.0.0.1", port=pg_port, user="postgres", dbname="aira", connect_timeout=5, options="-c lock_timeout=2000 -c statement_timeout=5000") as c:
         c.execute("update docx_analysis_supervisor set phase='clean', revision=revision+1, launch_id=null, document_id=null, "
                   "run_id=null, attempt_id=null, worker_instance_id=null, claim_fence=null "
                   "where slot_key=1 and phase='armed' and run_id=%s", (run_id,))
@@ -218,14 +220,29 @@ def clear_stuck_run(pg_port, run_id):
 
 
 # ---------- сервер ----------
+def configure_static_types():
+    # Windows registry can classify .mjs as text/plain. WebView2 then refuses
+    # module execution and the page remains at the initial startup screen.
+    # Initialize OS associations first, then explicitly override our scripts.
+    import mimetypes
+
+    mimetypes.init()
+    for extension in (".mjs", ".js"):
+        mimetypes.add_type("text/javascript", extension)
+
+
 class Server:
     def __init__(self):
         self.server = self.thread = self.url = self.connection = None
-        self.license_client = None
+        self.license_client = self.license_home = None
         self.application = None
         self.error = None
 
     def start(self, pg_port, say):
+        from aira_startup import Progress, database_url, startup_error, wait_started
+        progress = Progress(say)
+        progress("prepare")
+        configure_static_types()
         sys.executable = str(PY / "python.exe")  # воркер анализа — обычный python.exe (запускается без окна)
         sys.path.insert(0, str(FRONTEND))
         import uvicorn
@@ -238,44 +255,47 @@ class Server:
         port = pick_port(APP_PORT)
         self.url = f"http://127.0.0.1:{port}/aira/"
         analysis = "model" if (MODEL / "models" / "manifest.json").exists() else "fixture"
-        say("Загружаем модель…" if analysis == "model" else "Запускаем сервер…")
-        ready = threading.Event()
-        from aira_licensed_app import NativeApplication, create_license_client
         from ara.desktop.access import new_session_token
+        from ara.desktop.data_home import open_home
+        from ara.model_protection.bundle import configuration
+        from ara.model_protection.integration import make_license_client
+        from aira_licensed_app import NativeApplication
 
+        updates = json.loads((APP / "launcher/release-config.json").read_text())
+        self.license_home = open_home(DATA / "state-v2")
+        self.license_client = make_license_client(updates["license_origin"], self.license_home.path("license"), MODEL / "models")
         token = new_session_token()
-        self.license_client = create_license_client(APP / "launcher" / "release-config.json", DATA / "license")
-        app = aira_host.build_app(database_url=f"postgresql+psycopg://postgres@127.0.0.1:{pg_port}/aira",
+        ready = threading.Event()
+        def startup_failed(error):
+            self.error = startup_error(error)
+        app = aira_host.build_app(database_url=database_url(pg_port),
                                   runtime_root=RUNTIME, port=port, analysis=analysis, initialize=True,
+                                  onboarding_path=DATA / "onboarding.json",
+                                  app_update={"feed_url": updates["origin"].rstrip("/") + "/updates/windows-x64.xml",
+                                              "version": version(), "platform": "windows-x64"},
                                   on_ready=ready.set, log_file=LOGS / "aira.log", native_token=token.hex(),
-                                  startup_timeout=120, shutdown_timeout=120)
+                                  startup_timeout=120, shutdown_timeout=120,
+                                  model_key_provider=self.license_client.require_model_key if configuration(MODEL / "models") else None,
+                                  startup_progress=progress, on_startup_error=startup_failed,
+                                  database_connect_args={"connect_timeout": 5, "options": "-c lock_timeout=5000 -c statement_timeout=30000"})
         self.connection = dict(app.state.aira_connection)
         protected = NativeApplication(app, self.license_client, origin=self.connection["origin"], token=token)
         self.application = protected
         self.license_client.start()
-        config = uvicorn.Config(protected, host="127.0.0.1", port=port, access_log=False, log_level="info")
+        config = uvicorn.Config(protected, host="127.0.0.1", port=port, proxy_headers=False, access_log=False, log_level="info")
         self.server = uvicorn.Server(config)
 
         def serve():
             try:
                 self.server.run()
             except BaseException as e:  # noqa: BLE001
-                self.error = e
+                if self.error is None:
+                    self.error = startup_error(e)
                 traceback.print_exc()
 
         self.thread = threading.Thread(target=serve, name="aira-server", daemon=True)
         self.thread.start()
-        deadline = time.monotonic() + STARTUP_TIMEOUT
-        while not self.server.started:
-            if not self.thread.is_alive():
-                code = protected.startup_error
-                print(f"startup: local server stopped, code={code}", flush=True)
-                raise LaunchError("Сервер AIRA не запустился.", code=code) from self.error
-            if time.monotonic() >= deadline:
-                self.server.should_exit = True
-                raise LaunchError("Сервер AIRA не запустился за 5 минут.")
-            time.sleep(0.1)
-        print(f"startup: local server ready in {time.monotonic() - started_at:.1f} s", flush=True)
+        wait_started(self.server, self.thread, lambda: self.error, progress)
         STATE.write_text(json.dumps({"url": self.url, "pid": os.getpid()}), encoding="utf-8")
         return self.url
 
@@ -290,10 +310,11 @@ class Server:
             or (self.application.startup_failed and self.application.startup_error is None)
         ):
             raise LaunchError("Завершение компонентов AIRA не подтверждено. Подробности — в журнале.")
-        if self.license_client is not None:
-            if not self.license_client.shutdown(timeout=5):
-                raise LaunchError("Проверка лицензии ещё завершается. Повторите закрытие AIRA.")
-            self.license_client = None
+        if self.license_client is not None and not self.license_client.shutdown(timeout=5):
+            raise LaunchError("Проверка лицензии ещё завершается. Повторите закрытие AIRA.")
+        if self.license_home is not None and not self.license_home.close():
+            raise LaunchError("Не удалось подтвердить закрытие данных лицензии.")
+        self.license_client = None
         self.connection = None
         try:
             STATE.unlink()
@@ -316,6 +337,7 @@ def boot_backend(server, state, say, ask):
             raise
         server.stop()
         clear_stuck_run(state["pg"], run_id)
+        server.stop()
         server.__init__()
         return server.start(state["pg"], say)
 
@@ -379,6 +401,31 @@ class DesktopApi:
     def app_version(self):
         return version()
 
+    def _require_native_page(self):
+        from urllib.parse import urlsplit
+
+        try:
+            current = urlsplit(self._ctx["window"].get_current_url())
+            expected = urlsplit(self._ctx["server"].url)
+            trusted = (current.scheme == expected.scheme == "http"
+                       and current.hostname == expected.hostname == "127.0.0.1"
+                       and current.port == expected.port and expected.port is not None
+                       and current.path == expected.path == "/aira/"
+                       and not current.username and not current.password and not current.query)
+        except (TypeError, ValueError):
+            trusted = False
+        if not trusted:
+            raise LaunchError("Обновление доступно только в окне AIRA.")
+
+    def request_update(self):
+        self._require_native_page()
+        if self._ctx["closing"] or self._ctx["allow_close"]:
+            return False
+        self._ctx["update_requested"] = True
+        # The native close handshake first waits for this RPC reply to reach JS.
+        self._ctx["request_update"]()
+        return True
+
     def open_logs(self):
         os.startfile(str(LOGS))
 
@@ -412,16 +459,6 @@ class DesktopApi:
         path.write_bytes(base64.b64decode(b64))
         return {"saved": True, "path": str(path)}
 
-    def close_result(self, ok):
-        self._require_native_page()
-        # Ответ страницы на запрос закрытия: prepareToClose() дописал правки (ok) или пользователь остаётся.
-        print(f"close requested, page answered: {ok}", flush=True)
-        self._ctx["closing"] = False
-        if ok:
-            self._ctx["allow_close"] = True
-            threading.Thread(target=self._ctx["window"].destroy, daemon=True).start()
-
-
 def set_window_icon(title):
     """У окна pywebview значок Python: ставим значок AIRA (окно и панель задач)."""
     user = ctypes.windll.user32
@@ -443,7 +480,8 @@ def run_desktop(log):
     import webview
 
     ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("AIRA.Desktop")
-    ctx = {"server": Server(), "state": {"pg": None}, "allow_close": False, "closing": False, "window": None}
+    ctx = {"server": Server(), "state": {"pg": None}, "allow_close": False, "closing": False, "window": None,
+           "closed": threading.Event(), "update_requested": False}
     logo = "data:image/png;base64," + __import__("base64").b64encode((FRONTEND / "static" / "logo.png").read_bytes()).decode()
     window = webview.create_window("AIRA", html=SPLASH.replace("LOGO", logo), js_api=DesktopApi(ctx),
                                    width=1380, height=900, min_size=(1000, 640))
@@ -458,7 +496,7 @@ def run_desktop(log):
     def ask(title, text):
         return window.create_confirmation_dialog(title, text)
 
-    def on_closing():
+    def on_closing(wait_for_update_ack=False):
         server = ctx["server"]
         if ctx["allow_close"] or not server.url:
             return True
@@ -467,18 +505,25 @@ def run_desktop(log):
             return True
         if not ctx["closing"]:
             ctx["closing"] = True
-            # Спросить страницу: она допишет правки (prepareToClose) и ответит через close_result().
-            def request():
-                # run_js не ждёт ответа: окно может закрыться раньше, чем evaluate_js вернётся.
-                run = getattr(window, "run_js", None) or window.evaluate_js
-                try:
-                    run("window.__airaRequestClose ? window.__airaRequestClose() : window.pywebview.api.close_result(true)")
-                except Exception:
-                    ctx["closing"] = False
-            threading.Thread(target=request, daemon=True).start()
+            from aira_startup import request_window_close
+            def result(ok):
+                print(f"close requested, page answered: {ok}", flush=True)
+                ctx["closing"] = False
+                ctx["allow_close"] = ok
+                if not ok:
+                    ctx["update_requested"] = False
+            def error(exc):
+                ctx["closing"] = False
+                ctx["allow_close"] = False
+                ctx["update_requested"] = False
+                print("close handshake failed:", type(exc).__name__, flush=True)
+            request_window_close(window, ctx["closed"], result, error,
+                                 wait_for_update_ack=wait_for_update_ack)
         return False
 
+    ctx["request_update"] = lambda: on_closing(wait_for_update_ack=True)
     window.events.closing += on_closing
+    window.events.closed += ctx["closed"].set
 
     def boot():
         threading.Thread(target=set_window_icon, args=("AIRA",), daemon=True).start()
@@ -490,18 +535,33 @@ def run_desktop(log):
                 probe = window.evaluate_js(
                     "JSON.stringify({url: location.href, app: !document.getElementById('app').hidden, "
                     "start: !document.getElementById('start').hidden, native: !!(window.__airaRequestClose), "
-                    "licence: !document.getElementById('licence').hidden, tour: !!document.querySelector('.tour')})")
+                    "licence: !document.getElementById('licence').hidden, activation: !!document.querySelector('input.key'), "
+                    "bridge: !!window.pywebview?.api?.connection, gateText: document.getElementById('licence').innerText, "
+                    "tour: !!document.querySelector('.tour')})")
                 print("selftest page:", probe, flush=True)
-                window.destroy()
-        except Exception as e:  # noqa: BLE001
+                try:
+                    state = ctx["server"].license_client.view()
+                    print("selftest license:", {"phase": state.phase, "error_code": state.error_code}, flush=True)
+                except Exception as exc:
+                    print("selftest license diagnostic:", type(exc).__name__, flush=True)
+                from urllib.request import urlopen
+                for relative in ("assets/js/main.mjs", "assets/js/host.mjs", "client/document-workspace.mjs"):
+                    with urlopen(url + relative, timeout=5) as response:
+                        print("selftest resource:", relative, response.status, response.headers.get("Content-Type"), flush=True)
+                # Exercise the same save/close handshake as the user's close button.
+                on_closing()
+        except (Exception, SystemExit) as e:  # noqa: BLE001
             traceback.print_exc()
-            msg = str(e) if isinstance(e, LaunchError) else "AIRA не запустилась."
+            from aira_startup import StartupError
+            msg = str(e) if isinstance(e, (LaunchError, StartupError)) else "AIRA не запустилась."
             say(f"{msg} Подробности — в журнале.", True)
 
     try:
         webview.start(boot, gui="edgechromium", private_mode=False, storage_path=str(DATA / "webview"))
     finally:
+        ctx["closed"].set()
         shutdown_backend(ctx["server"])
+    return ctx["update_requested"]
 
 
 # ---------- запасной режим: окно управления + браузер (если нет WebView2) ----------
@@ -615,8 +675,14 @@ def main():
         stop_postgres()
         return
     kernel = ctypes.windll.kernel32
-    kernel.CreateMutexW(None, False, MUTEX)
+    kernel.CreateMutexW.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_wchar_p]
+    kernel.CreateMutexW.restype = ctypes.c_void_p
+    kernel.CloseHandle.argtypes = [ctypes.c_void_p]
+    mutex = kernel.CreateMutexW(None, False, MUTEX)
+    if not mutex:
+        raise LaunchError("Не удалось подготовить запуск AIRA.")
     if kernel.GetLastError() == 183:
+        kernel.CloseHandle(mutex)
         focus_running()
         return
     log = open_log()
@@ -627,22 +693,25 @@ def main():
             return
     except Exception as error:
         print("Update check unavailable:", type(error).__name__, flush=True)
+    if os.environ.get("AIRA_BROWSER_MODE") or "--browser" in sys.argv:
+        ctypes.windll.user32.MessageBoxW(None, "Эта сборка AIRA работает в окне приложения. Запустите её обычным ярлыком.", "AIRA", 0x40)
+        return
     try:
-        if os.environ.get("AIRA_BROWSER_MODE") or "--browser" in sys.argv:
-            raise LaunchError("Для этой версии AIRA нужен Microsoft Edge WebView2 Runtime. "
-                              "Лицензированное приложение работает в собственном окне.")
-        import webview  # noqa: F401
-
-        print("ui mode: licensed desktop", flush=True)
-        run_desktop(log)
-    except Exception as error:
+        if run_desktop(log):
+            # The old backend/PostgreSQL have stopped; the new process starts with WinSparkle.
+            kernel.CloseHandle(mutex)
+            mutex = None
+            subprocess.Popen([str(PY / "pythonw.exe"), str(Path(__file__).resolve())],
+                             creationflags=NO_WINDOW, stdin=subprocess.DEVNULL,
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception:
         traceback.print_exc()
-        message = str(error) if isinstance(error, LaunchError) else (
-            "Не удалось открыть окно AIRA. Проверьте наличие Microsoft Edge WebView2 Runtime."
-        )
-        ctypes.windll.user32.MessageBoxW(None, message + "\nПодробности — в журнале AIRA.", "AIRA", 0x10)
-        raise SystemExit(1) from None
+        ctypes.windll.user32.MessageBoxW(None, "Не удалось открыть окно AIRA. Проверьте установку Microsoft Edge WebView2 Runtime и повторите запуск. Подробности — в журнале AIRA.", "AIRA", 0x10)
+    finally:
+        if mutex:
+            kernel.CloseHandle(mutex)
 
 
 if __name__ == "__main__":
     main()
+

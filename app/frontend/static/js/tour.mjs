@@ -41,7 +41,7 @@ export function runTour(steps, { onFinish = () => {} } = {}) {
     const texts = [].concat(step.text || []);
     nextBtn = h('button', { class: 'btn primary sm', type: 'button', onclick: () => {
       if (!last) return show(i + 1);
-      finish(true);
+      finish(true, true);
       step.onDone?.();
     } }, step.nextLabel || (last ? 'Готово' : 'Далее'));
     const bubble = h('div', { class: 'tour-bubble' },
@@ -55,7 +55,7 @@ export function runTour(steps, { onFinish = () => {} } = {}) {
         h('div', { class: 'tour-btns' },
           i > 0 ? h('button', { class: 'btn sm', type: 'button', onclick: () => show(i - 1) }, 'Назад') : null,
           step.action ? h('button', { class: 'btn sm', type: 'button', onclick: () => step.action.run() }, step.action.label) : null,
-          last && step.laterLabel ? h('button', { class: 'btn sm', type: 'button', onclick: () => finish(true) }, step.laterLabel) : null,
+          last && step.laterLabel ? h('button', { class: 'btn sm', type: 'button', onclick: () => finish(true, true) }, step.laterLabel) : null,
           nextBtn)));
     card.querySelector('.tour-bubble')?.remove();
     card.append(bubble);
@@ -116,7 +116,7 @@ export function runTour(steps, { onFinish = () => {} } = {}) {
   }
   const onResize = () => place();
 
-  function finish(done) {
+  function finish(done, completed = false) {
     if (current !== api) return;
     current = null;
     clearTimeout(timer);
@@ -126,7 +126,7 @@ export function runTour(steps, { onFinish = () => {} } = {}) {
     root.classList.add('out');
     setTimeout(() => root.remove(), 200);
     try { previous?.focus?.({ preventScroll: true }); } catch { /* gone */ }
-    onFinish(done);
+    onFinish(done, { completed });
   }
 
   const api = { finish };

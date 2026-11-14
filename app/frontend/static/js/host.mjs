@@ -32,6 +32,7 @@ export async function connectHost() {
     origin: conn.origin,
     sessionToken: conn.sessionToken,
     native: !!native,
+    checkUpdates: native?.checkUpdates ? () => native.checkUpdates() : null,
     openDocx: native?.openDocx ? () => native.openDocx() : browserPick,
     saveDocx: native?.saveDocx ? (n, b) => native.saveDocx(n, b) : browserDownload,
     saveFile: native?.saveFile ? (n, b, type) => native.saveFile(n, b, type) : null,
@@ -57,15 +58,24 @@ async function desktopBridge() {
   };
   const fromB64 = b64 => Uint8Array.from(atob(b64), c => c.charCodeAt(0));
   let closeHandler = null;
-  // Окно спрашивает перед закрытием; ответ — через close_result (Python не дожидается промисов из evaluate_js).
+  // Native shell consumes the resolved Promise through pywebview's one-way callback.
+  // Do not send another js_api RPC: its reply would race the window being destroyed.
   window.__airaRequestClose = async () => {
-    let ok = true;
-    try { if (closeHandler) ok = await closeHandler(); } catch { ok = false; }
-    api.close_result(!!ok);
+    try { return closeHandler ? (await closeHandler()) === true : true; }
+    catch { return false; }
   };
   return {
     desktop: true,
     connection: () => api.connection(),
+    checkUpdates: api.request_update ? async () => {
+      let acknowledge;
+      window.__airaUpdateBridgeReady = new Promise(resolve => { acknowledge = resolve; });
+      try {
+        const accepted = await api.request_update();
+        acknowledge(accepted === true);
+        return accepted;
+      } catch (error) { acknowledge(false); throw error; }
+    } : null,
     openDocx: async () => {
       const r = await api.open_docx();
       if (!r) return null;

@@ -19,7 +19,7 @@ SPARKLE = "http://www.andymatuschak.org/xml-namespaces/sparkle"
 ET.register_namespace("sparkle", SPARKLE)
 
 
-def appcast(*, platform, version, build, url, size, signature):
+def appcast(*, platform, version, build, url, size, signature, minimum_system_version="14.0"):
     if platform not in {"macos-arm64", "windows-x64"}:
         raise ValueError("unsupported platform")
     if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version) or build < 1:
@@ -28,6 +28,8 @@ def appcast(*, platform, version, build, url, size, signature):
         raise ValueError("invalid enclosure")
     if len(base64.b64decode(signature, validate=True)) != 64:
         raise ValueError("invalid signature")
+    if not re.fullmatch(r"[0-9]+\.[0-9]+(?:\.[0-9]+)?", minimum_system_version):
+        raise ValueError("invalid minimum system version")
     root = ET.Element("rss", version="2.0")
     channel = ET.SubElement(root, "channel")
     ET.SubElement(channel, "title").text = "AIRA updates"
@@ -42,7 +44,7 @@ def appcast(*, platform, version, build, url, size, signature):
         f"{{{SPARKLE}}}edSignature": signature,
     }
     if platform == "macos-arm64":
-        ET.SubElement(item, f"{{{SPARKLE}}}minimumSystemVersion").text = "14.0"
+        ET.SubElement(item, f"{{{SPARKLE}}}minimumSystemVersion").text = minimum_system_version
     else:
         attributes[f"{{{SPARKLE}}}os"] = "windows-x64"
         # Inno uses its existing AppId/install directory and preserves LOCALAPPDATA.
@@ -60,6 +62,7 @@ def main():
     parser.add_argument("--build", type=int, required=True)
     parser.add_argument("--sign-update", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--minimum-system-version", default="14.0")
     args = parser.parse_args()
     source = args.installer.resolve(strict=True)
     expected = (
@@ -98,6 +101,7 @@ def main():
         url=url,
         size=source.stat().st_size,
         signature=signature,
+        minimum_system_version=args.minimum_system_version,
     )
     feed = args.output / (args.platform + ".xml")
     feed.write_bytes(xml)
@@ -118,4 +122,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 

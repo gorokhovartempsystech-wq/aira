@@ -64,7 +64,12 @@ def main(args):
             os.write(prepared, TOKENS["prepared"] + (b"!" if mode == "prepared_extra" else b""))
         os.close(prepared)
         allowed.wait()
-        decoder = StreamDecoder(binding, lane="request")
+        if mode == "protected_model":
+            from ara.model_protection.private_bootstrap import ProtectedRequestDecoder
+
+            decoder = ProtectedRequestDecoder(binding)
+        else:
+            decoder = StreamDecoder(binding, lane="request")
         request = None
         while True:
             if not select.select([0], [], [], 0.1)[0]:
@@ -79,6 +84,10 @@ def main(args):
             return 75
         from ._fixture_child import run_fixture
 
-        return run_fixture(binding, request, mode)
+        return (
+            run_fixture(binding, request, mode, model_key=decoder.take_key())
+            if mode == "protected_model"
+            else run_fixture(binding, request, mode)
+        )
     except BaseException:
         return 75

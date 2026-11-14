@@ -71,7 +71,13 @@ def run(api, inherited, binding, deadline, lease, mode):
         while not allowed.wait(0.05):
             if clock.now_ns() >= min(deadline, lease) or failed.is_set():
                 return 74
-        decoder, request = StreamDecoder(binding, lane="request"), None
+        if mode == "protected_model":
+            from ara.model_protection.private_bootstrap import ProtectedRequestDecoder
+
+            decoder = ProtectedRequestDecoder(binding)
+        else:
+            decoder = StreamDecoder(binding, lane="request")
+        request = None
         while True:
             if clock.now_ns() >= deadline or failed.is_set():
                 return 74
@@ -98,7 +104,15 @@ def run(api, inherited, binding, deadline, lease, mode):
 
         from ._fixture_child import run_fixture
 
-        code = run_fixture(api, binding, request, mode, emit, inherited["diagnostics"].handle())
+        code = run_fixture(
+            api,
+            binding,
+            request,
+            mode,
+            emit,
+            inherited["diagnostics"].handle(),
+            **({"model_key": decoder.take_key()} if mode == "protected_model" else {}),
+        )
         quit_watch.set()
         thread.join(2)
         if thread.is_alive() or failed.is_set():

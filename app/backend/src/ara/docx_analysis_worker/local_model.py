@@ -10,6 +10,7 @@ from pathlib import Path
 from ara.docx_analysis.storage_codec import ExecutionSpec
 from ara.docx_analysis.visible_word._models import PROFILE
 
+from .prototype import propose
 from .review_fixture import _fragments, _request_header
 from .wire import encode_message
 
@@ -19,17 +20,27 @@ def require(ok):
         raise ValueError("Invalid local model input or package")
 
 
-def package_identity(model_dir, engine_dir):
+def package_identity(model_dir, engine_dir, *, checkpoint=None):
     root = Path(model_dir).resolve()
     raw = (root / "manifest.json").read_bytes()
     manifest = json.loads(raw)
     require(type(manifest.get("files")) is dict and bool(manifest["files"]))
     for name, expected in manifest["files"].items():
+        if checkpoint is not None:
+            checkpoint()
         path = (root / name).resolve()
         require(path.is_relative_to(root) and path.is_file())
         require(path.stat().st_size == expected["bytes"])
         with path.open("rb") as handle:
-            digest = hashlib.file_digest(handle, "sha256").hexdigest()
+            if checkpoint is None:
+                digest = hashlib.file_digest(handle, "sha256").hexdigest()
+            else:
+                hashed = hashlib.sha256()
+                while chunk := handle.read(1024 * 1024):
+                    checkpoint()
+                    hashed.update(chunk)
+                checkpoint()
+                digest = hashed.hexdigest()
         require(digest == expected["sha256"])
     runtime = Path(engine_dir) / "aira_ml"
     adapter = hashlib.sha256(Path(__file__).read_bytes())
@@ -38,6 +49,16 @@ def package_identity(model_dir, engine_dir):
             continue
         adapter.update(name.encode())
         adapter.update((runtime / name).read_bytes())
+    for path in sorted(Path(__file__).with_name("prototype").glob("*.py")):
+        adapter.update(path.name.encode())
+        adapter.update(path.read_bytes())
+    if "protection" in manifest:
+        from ara.model_protection.bundle import configuration
+
+        require(configuration(root) is not None)
+        for path in sorted((Path(__file__).parents[1] / "model_protection").glob("*.py")):
+            adapter.update(path.name.encode())
+            adapter.update(path.read_bytes())
     return ExecutionSpec(
         "local_model",
         "0.1.0",
@@ -47,7 +68,7 @@ def package_identity(model_dir, engine_dir):
     )
 
 
-def adapt(raw):
+def adapt(raw, *, questions=()):
     require(
         type(raw) is dict
         and set(raw) == {"engine", "models", "issues", "questions", "checked", "seconds", "partial"}
@@ -75,12 +96,12 @@ def adapt(raw):
             pair_candidates_total=None,
             pair_candidates_completed=None,
         ),
-        standalone_questions=[],
+        standalone_questions=list(questions),
     )
     return json.dumps(result, ensure_ascii=False, allow_nan=False, separators=(",", ":")).encode()
 
 
-def run(request, *, model_dir, engine_dir, emit, budget_seconds=285):
+def run(request, *, model_dir, engine_dir, emit, budget_seconds=285, model_key=None):
     require(type(budget_seconds) in (int, float) and 0 < budget_seconds <= 290)
     deadline = time.monotonic() + budget_seconds
     spec = package_identity(model_dir, engine_dir)
@@ -98,7 +119,13 @@ def run(request, *, model_dir, engine_dir, emit, budget_seconds=285):
     send("stage", 1, stage="loading_model")
     from aira_ml.engine import Engine
 
-    model = Engine(model_dir, threads=6)
+    from ara.model_protection.bundle import ModelReader, configuration
+
+    if configuration(model_dir) is not None:
+        model = Engine(model_dir, threads=6, model_reader=ModelReader(model_dir, model_key))
+    else:
+        require(model_key is None)
+        model = Engine(model_dir, threads=6)
     require(model.manifest["version"] == spec.models_version)
     calls = {"embedder": 0, "nli": 0}
 
@@ -115,7 +142,7 @@ def run(request, *, model_dir, engine_dir, emit, budget_seconds=285):
     send("stage", 2, stage="analyzing")
     raw = model.review(fragments, deadline=time.time() + max(0, deadline - time.monotonic()))
     print(json.dumps({"onnx_calls": calls}), file=sys.stderr, flush=True)
-    result = adapt(raw)
+    result = adapt(raw, questions=propose(fragments))
     require(time.monotonic() < deadline + 5)
     send(
         "result",
