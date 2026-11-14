@@ -6,7 +6,13 @@ import os
 import zipfile
 from pathlib import Path
 
-from common import build_for_run, download_pin, require_source, version_for_run
+from common import (
+    build_for_run,
+    download_pin,
+    require_source,
+    verify_models,
+    version_for_run,
+)
 
 
 def main():
@@ -46,6 +52,7 @@ def main():
         models.rglob("*.onnx")
     ):
         raise ValueError("protected model required")
+    verify_models(models)
     download_pin(
         "windows-runtime" if args.platform == "windows-x64" else "macos-runtime",
         args.work,

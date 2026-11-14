@@ -88,6 +88,7 @@ def main():
         "--destination",
         payload / "app/backend/ml_bundle",
     )
+    run(sys.executable, "infra/desktop-release/macos_minimum.py", payload)
     run(sys.executable, "infra/desktop-release/backend_gate.py", payload / "pgsql/bin")
     if list(payload.rglob("secrets.env")) or list(
         (payload / "app/backend/ml_bundle/models").rglob("*.onnx")

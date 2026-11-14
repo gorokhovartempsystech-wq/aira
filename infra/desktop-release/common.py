@@ -2,6 +2,7 @@
 
 import hashlib
 import re
+import sys
 from pathlib import Path
 from urllib.request import urlopen
 
@@ -79,14 +80,19 @@ def require_source(root):
     root = Path(root)
     required = [
         "app/backend/src/ara/model_protection/integration.py",
+        "app/backend/src/ara/model_protection/bundle.py",
         "app/frontend/packaging/windows/aira_startup.py",
         "app/frontend/packaging/windows/aira_licensed_app.py",
         "tools/smoke_windows_desktop.py",
     ]
     if any(not (root / name).is_file() for name in required):
         raise ValueError("merge the reviewed desktop integration before releasing main")
-    # Never emit a release from the old plaintext-model build path.
-    for name in ("app/frontend/packaging/macos/build.py", "tools/prepare_ml_bundle.py"):
-        text = (root / name).read_text()
-        if "protection" not in text:
-            raise ValueError("protected model packaging required")
+
+
+def verify_models(models):
+    """Validate the actual bundle using the same decoder as the shipped runtime."""
+    sys.path.insert(0, str(Path("app/backend/src").resolve()))
+    from ara.model_protection.bundle import configuration
+
+    if configuration(models) is None or list(Path(models).rglob("*.onnx")):
+        raise ValueError("a valid protected model bundle is required")
