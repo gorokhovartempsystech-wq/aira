@@ -4,11 +4,13 @@ import json
 import os
 import subprocess
 import shutil
+import sys
 from uuid import uuid4
 from pathlib import Path
 
 
 def main():
+    sys.stdout.reconfigure(encoding="utf-8", errors="backslashreplace")
     parser = argparse.ArgumentParser()
     parser.add_argument('installation', type=Path)
     args = parser.parse_args()

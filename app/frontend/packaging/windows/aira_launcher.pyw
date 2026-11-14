@@ -455,12 +455,17 @@ def run_desktop(log):
                     "bridge: !!window.pywebview?.api?.connection, gateText: document.getElementById('licence').innerText, "
                     "tour: !!document.querySelector('.tour')})")
                 print("selftest page:", probe, flush=True)
-                state = ctx["server"].license_client.view()
-                print("selftest license:", {"phase": state.phase, "error_code": state.error_code}, flush=True)
+                try:
+                    state = ctx["server"].license_client.view()
+                    print("selftest license:", {"phase": state.phase, "error_code": state.error_code}, flush=True)
+                except Exception as exc:
+                    print("selftest license diagnostic:", type(exc).__name__, flush=True)
                 from urllib.request import urlopen
                 for relative in ("assets/js/main.mjs", "assets/js/host.mjs", "client/document-workspace.mjs"):
                     with urlopen(url + relative, timeout=5) as response:
                         print("selftest resource:", relative, response.status, response.headers.get("Content-Type"), flush=True)
+                diagnostic = window.evaluate_js("(async () => { try { await import('./assets/js/main.mjs'); return 'module import completed'; } catch (e) { return String(e); } })()")
+                print("selftest module:", diagnostic, flush=True)
                 window.destroy()
         except Exception as e:  # noqa: BLE001
             traceback.print_exc()
