@@ -72,3 +72,33 @@ source-slice kinds. Anchors refer to the original XML elements and offsets to
 their decoded characters. Consumers must update their closed enums alongside
 the backend. The team synthetic blocker sample now reads all six fragments;
 this does not verify the missing original Mac file or ML semantic accuracy.
+
+## Embedded fonts and paragraph metadata — DOCX-COMPAT-01 (14 November 2026)
+
+The Word package profile accepts `w14:paraId` and `w14:textId` on paragraphs as
+eight hexadecimal digits. Original XML attributes and physical source anchors
+remain intact. Other attributes, malformed identities and identities on runs
+remain unsupported. Earlier source profiles retain their existing rules.
+
+Embedded regular, bold, italic and bold-italic fonts are retained as opaque
+resources. Each font slot must resolve through its font table's internal font
+relationship to a nonempty TrueType/OpenType or obfuscated font part. Keys and
+subset flags are validated; obfuscated font slots require a key. Every outgoing
+font-table edge must have a slot, and font parts cannot have outgoing edges or
+other owners. Unknown roles and orphan parts still refuse the whole snapshot.
+Font data is never installed, decoded, executed or included in model text.
+Existing archive, XML and aggregate quotas apply before this accounting.
+See Microsoft's [font embedding reference](https://learn.microsoft.com/en-us/dotnet/api/documentformat.openxml.wordprocessing.embedregularfont?view=openxml-3.0.1)
+and [font content types](https://learn.microsoft.com/en-us/openspecs/office_standards/ms-oe376/1663dabc-5d98-463f-889e-bcd9b77c3d34).
+
+The same bounded extension accepts valid paired `colFirst`/`colLast` bookmark
+metadata and explicitly disabled run/style `rtl` formatting. Active right-to-left
+formatting is outside this extension. These properties do not remove or reorder
+literal text.
+
+Synthetic acceptance covers both Word namespaces, all four font slots and both
+font content types, exact source mapping, persisted fixture review, and export
+after a manual text edit. The fixture is not real inference. Export without edits
+retains exact bytes; a text edit preserves every other package part, including
+fonts, and all XML outside the edited text node. This does not claim pixel parity
+with Microsoft Word, font rendering in the editor, or a released desktop build.

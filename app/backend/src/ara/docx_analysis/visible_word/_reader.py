@@ -12,6 +12,30 @@ from ._tabs import tabs
 
 
 class Reader(ListReader):
+    def rsids(self, node, paragraph=False):
+        if not paragraph:
+            return super().rsids(node)
+        # These Word paragraph identities are metadata, not requirement text.
+        # Keep the original attributes and physical anchors; never strip the XML.
+        names = {self.ns + n for n in ("rsidR", "rsidRPr", "rsidDel", "rsidRDefault", "rsidP")}
+        w14 = "{http://schemas.microsoft.com/office/word/2010/wordml}"
+        check(set(node.attrib) <= names | {w14 + "paraId", w14 + "textId"})
+        check(all(re.fullmatch(r"[0-9a-fA-F]{8}", v) is not None for v in node.attrib.values()))
+
+    def marker(self, node):
+        if self.name(node) != "bookmarkStart" or not any(
+            self.ns + name in node.attrib for name in ("colFirst", "colLast")
+        ):
+            return super().marker(node)
+        self.attrs(node, {"id", "name", "colFirst", "colLast"}, {"id", "name"})
+        self.leaf(node)
+        check(re.fullmatch(r"[+-]?[0-9]{1,20}", self.attr(node, "id")) is not None)
+        check(bool(self.attr(node, "name")))
+        columns = [self.attr(node, name) for name in ("colFirst", "colLast")]
+        check(all(v is not None and re.fullmatch(r"[0-9]{1,10}", v) for v in columns))
+        check(0 <= int(columns[0]) <= int(columns[1]) <= 2**31 - 1)
+        self.event("metadata", "bookmark", node)
+
     def extended_inline(self, child, paragraph, *, in_link, top):
         math_ns = (
             "http://purl.oclc.org/ooxml/officeDocument/math"
@@ -76,6 +100,11 @@ class Reader(ListReader):
         return Grammar
 
     def formatting_property(self, node, kind):
+        if kind != "pPr" and self.name(node) == "rtl":
+            self.leaf(node)
+            self.attrs(node, {"val"})
+            check(not boolean(self.attr(node, "val")))
+            return
         if kind == "pPr" and self.name(node) == "pBdr":
             borders(self, node, check)
             return

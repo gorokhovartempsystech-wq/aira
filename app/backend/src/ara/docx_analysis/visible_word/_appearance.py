@@ -89,7 +89,7 @@ def empty_text(node):
     check(not (node.text or "").strip(" \t\r\n") and not (node.tail or "").strip(" \t\r\n"))
 
 
-def fonts(root):
+def fonts(root, *, embedding=None):
     ns = root.tag.rpartition("}")[0] + "}"
     check(root.tag in {"{" + n + "}fonts" for n in WORD_NAMESPACES} and not root.attrib)
     empty_text(root)
@@ -105,8 +105,13 @@ def fonts(root):
         for node in font:
             empty_text(node)
             local = node.tag[len(ns) :] if node.tag.startswith(ns) else ""
-            check(local in allowed and local not in seen and not len(node))
+            check(local not in seen and not len(node))
             seen.add(local)
+            if local in {"embedRegular", "embedBold", "embedItalic", "embedBoldItalic"}:
+                check(embedding is not None)
+                embedding(node, ns)
+                continue
+            check(local in allowed)
             if local == "sig":
                 check(
                     set(node.attrib)
