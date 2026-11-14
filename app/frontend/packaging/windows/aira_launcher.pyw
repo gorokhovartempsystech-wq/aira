@@ -481,7 +481,10 @@ def run_desktop(log):
                 for relative in ("assets/js/main.mjs", "assets/js/host.mjs", "client/document-workspace.mjs"):
                     with urlopen(url + relative, timeout=5) as response:
                         print("selftest resource:", relative, response.status, response.headers.get("Content-Type"), flush=True)
-                window.destroy()
+                # Exercise the normal close handshake. Calling destroy here
+                # releases pywebview's JS semaphore even when closing is vetoed,
+                # racing the close_result callback and its final window destroy.
+                on_closing()
         except (Exception, SystemExit) as e:  # noqa: BLE001
             traceback.print_exc()
             from aira_startup import StartupError

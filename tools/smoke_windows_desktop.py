@@ -28,13 +28,18 @@ def main():
     try:
         for attempt in range(args.runs):
             offset = log.stat().st_size if log.exists() else 0
-            child = subprocess.Popen(command, env=child_env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            try:
-                code = child.wait(timeout=120)
-            except subprocess.TimeoutExpired:
-                subprocess.run(['taskkill', '/PID', str(child.pid), '/T', '/F'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                raise RuntimeError('Desktop smoke timed out') from None
-            assert code == 0
+            crash_log = profile / f'native-stderr-{attempt+1}.log'
+            with crash_log.open('wb') as native_errors:
+                child = subprocess.Popen(command, env=child_env, stdout=subprocess.DEVNULL, stderr=native_errors)
+                try:
+                    code = child.wait(timeout=120)
+                except subprocess.TimeoutExpired:
+                    subprocess.run(['taskkill', '/PID', str(child.pid), '/T', '/F'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    raise RuntimeError('Desktop smoke timed out') from None
+            if code != 0:
+                print(f'Native attempt {attempt+1} exit={code} status=0x{code & 0xffffffff:08x}', flush=True)
+                print('Native stderr:', crash_log.read_bytes()[-16384:].decode('utf-8', errors='replace'), flush=True)
+            assert code == 0, f'Native attempt {attempt+1} exited with {code}'
             lines = log.read_bytes()[offset:].decode('utf-8').splitlines()
             records = [json.loads(line.split('selftest page:',1)[1].strip()) for line in lines if 'selftest page:' in line]
             print('Native page observations:', json.dumps(records), flush=True)
