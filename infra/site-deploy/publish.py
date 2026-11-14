@@ -1,5 +1,6 @@
 """Run explicitly in GitHub Actions; authenticate without persistent secrets."""
 
+import argparse
 import hashlib
 import json
 import os
@@ -42,10 +43,13 @@ def payload():
     return {"sha": os.environ.get("GITHUB_SHA", ""), "files": files}
 
 
-def main():
+def main(argv=None):
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--check", action="store_true", help="Validate files without publishing")
+    arguments = parser.parse_args(argv)
     document = payload()
-    if os.environ.get("GITHUB_EVENT_NAME") == "pull_request":
-        print("Site asset validation passed; PRs do not publish.")
+    if arguments.check or os.environ.get("GITHUB_EVENT_NAME") == "pull_request":
+        print("Site asset validation passed; no publication requested.")
         return
     if os.environ.get("GITHUB_REF") != "refs/heads/main":
         raise SystemExit("Publication is restricted to main.")
