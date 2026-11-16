@@ -196,27 +196,56 @@ class LaunchError(Exception):
         self.code = code
 
 
-# ---------- снятие блокировки после сбоя проверки ----------
-def stuck_failed_run(pg_port):
-    """Проверка упала, а отметка «воркер занят» осталась (сервер тогда не стартует).
-    Снимать её безопасно, только если тот запуск уже завершён."""
+# ---------- снятие блокировки после сбоя ----------
+# Если прошлый процесс AIRA завершился, не дождавшись воркера проверки (сбой, «Выйти» во время проверки,
+# выключение компьютера), запись воркера остаётся в «armed», и бэкенд не стартует (recovery_required).
+# Так было у пилота 0.2.0: проверка ещё шла, поэтому прежнее снятие «только для завершённых» не помогало.
+# На Windows воркеры живут в Job-объекте с «убить при закрытии»: раз старого процесса AIRA нет, нет и воркеров.
+# Тогда запись переводится в «drained» — это бэкенд сам записал бы после подтверждённого выхода воркера, —
+# и дальше он штатно восстанавливается: отменяет очередь, помечает прерванную проверку и очищает запись.
+PG_OPTIONS = {"connect_timeout": 5, "options": "-c lock_timeout=2000 -c statement_timeout=5000"}
+
+
+def other_aira_processes():
+    """PID процессов Python из папки AIRA, кроме этого (например, воркер прошлого запуска)."""
+    k, psapi = ctypes.windll.kernel32, ctypes.windll.psapi
+    pids, got = (ctypes.c_ulong * 4096)(), ctypes.c_ulong()
+    if not psapi.EnumProcesses(pids, ctypes.sizeof(pids), ctypes.byref(got)):
+        return []
+    mine, root, out = os.getpid(), str(PY).lower(), []
+    k.OpenProcess.restype = ctypes.c_void_p
+    for pid in pids[: got.value // ctypes.sizeof(ctypes.c_ulong)]:
+        if not pid or pid == mine:
+            continue
+        h = k.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+        if not h:
+            continue
+        try:
+            buf, size = ctypes.create_unicode_buffer(1024), ctypes.c_ulong(1024)
+            if k.QueryFullProcessImageNameW(ctypes.c_void_p(h), 0, buf, ctypes.byref(size)) and buf.value.lower().startswith(root):
+                out.append(pid)
+        finally:
+            k.CloseHandle(ctypes.c_void_p(h))
+    return out
+
+
+def stuck_fence(pg_port):
     import psycopg
 
-    with psycopg.connect(host="127.0.0.1", port=pg_port, user="postgres", dbname="aira", connect_timeout=5, options="-c lock_timeout=2000 -c statement_timeout=5000") as c:
-        row = c.execute("select s.run_id from docx_analysis_supervisor s join docx_analysis_runs r on r.id = s.run_id "
-                        "where s.slot_key = 1 and s.phase = 'armed' "
-                        "and r.status in ('succeeded','failed','cancelled','timed_out')").fetchone()
-        return row[0] if row else None
+    with psycopg.connect(host="127.0.0.1", port=pg_port, user="postgres", dbname="aira", **PG_OPTIONS) as c:
+        row = c.execute("select s.phase, s.run_id, r.status from docx_analysis_supervisor s "
+                        "left join docx_analysis_runs r on r.id = s.run_id where s.slot_key = 1").fetchone()
+        return row if row and row[0] == "armed" else None
 
 
-def clear_stuck_run(pg_port, run_id):
+def release_stuck_fence(pg_port):
     import psycopg
 
-    with psycopg.connect(host="127.0.0.1", port=pg_port, user="postgres", dbname="aira", connect_timeout=5, options="-c lock_timeout=2000 -c statement_timeout=5000") as c:
-        c.execute("update docx_analysis_supervisor set phase='clean', revision=revision+1, launch_id=null, document_id=null, "
-                  "run_id=null, attempt_id=null, worker_instance_id=null, claim_fence=null "
-                  "where slot_key=1 and phase='armed' and run_id=%s", (run_id,))
-        print("cleared stuck analysis fence for run", run_id, flush=True)
+    with psycopg.connect(host="127.0.0.1", port=pg_port, user="postgres", dbname="aira", **PG_OPTIONS) as c:
+        n = c.execute("update docx_analysis_supervisor set phase='drained', revision=revision+1 "
+                      "where slot_key=1 and phase='armed'").rowcount
+    print(f"recovery: analysis worker record armed -> drained ({n} row)", flush=True)
+    return n == 1
 
 
 # ---------- сервер ----------
@@ -337,15 +366,19 @@ def boot_backend(server, state, say, ask):
         return server.start(state["pg"], say)
     except Exception as e:
         code = getattr(e, "code", None) or getattr(server.error, "code", None)
-        run_id = stuck_failed_run(state["pg"]) if code == "recovery_required" else None
-        if not run_id:
+        fence = stuck_fence(state["pg"]) if code == "recovery_required" else None
+        print(f"startup refused: code={code} fence={fence}", flush=True)
+        if not fence:
             raise
-        if not ask("AIRA", "Прошлая проверка завершилась сбоем, и AIRA заблокировала новые проверки.\n\n"
-                           "Снять блокировку? Документы и результаты не пострадают."):
+        others = other_aira_processes()
+        if others:
+            print("recovery skipped: other AIRA processes are alive", others, flush=True)
+            raise LaunchError("Прошлый запуск AIRA ещё не завершился. Подождите минуту или перезагрузите "
+                              "компьютер и откройте AIRA снова.") from e
+        say("Восстанавливаемся после прошлого сбоя…")
+        server.stop()
+        if not release_stuck_fence(state["pg"]):
             raise
-        server.stop()
-        clear_stuck_run(state["pg"], run_id)
-        server.stop()
         server.__init__()
         return server.start(state["pg"], say)
 
@@ -640,12 +673,15 @@ def run_browser(log):
 
     def quit_app(source="button"):
         print(f"quit requested: {source}", flush=True)
+        if state.get("quitting"):  # повторное «Выйти» во время выхода прерывало остановку воркера проверки
+            return
         if server.url:
             answer = messagebox.askyesno("Выйти из AIRA?", "Перед выходом сохраните документы в AIRA (кнопка «Сохранить»).\n\n"
                                                            "Остановить AIRA?", parent=root)
             print(f"quit confirmed: {answer}", flush=True)
             if not answer:
                 return
+        state["quitting"] = True
         quit_btn.configure(state="disabled")
         open_btn.configure(state="disabled")
         status.set("Завершаем работу…")
