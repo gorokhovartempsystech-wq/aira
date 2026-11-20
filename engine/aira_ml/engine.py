@@ -170,6 +170,74 @@ def distinct_exchange_scopes(left, right):
     return a is not None and b is not None and a != b
 
 
+
+_DIRECT_OBLIGATION = re.compile(
+    r"^(?P<subject>[^.,;:!?]+?)\s+(?P<negative>не\s+)?"
+    r"(?P<modal>должен|должна|должно|должны)\s+(?P<action>[^.;:!?]+)\.?$"
+)
+_UNCERTAIN_OBLIGATION = re.compile(
+    r"\b(?:обязательно|обязан[аы]?|требуется|необходимо|всегда|только|кроме|пример)\b"
+)
+
+
+def opposed_obligations(left, right):
+    def parse(text):
+        value = " ".join(text.casefold().split())
+        if _UNCERTAIN_OBLIGATION.search(value) or any(c in value for c in '\""«»'):
+            return None
+        return _DIRECT_OBLIGATION.fullmatch(value)
+
+    a, b = parse(left), parse(right)
+    return (
+        a is not None and b is not None
+        and bool(a["negative"]) != bool(b["negative"])
+        and all(a[field] == b[field] for field in ("subject", "modal", "action"))
+    )
+
+
+
+_TITLE_SCOPE = re.compile(
+    r"\b(?:контур\w*|кабинет\w*|доступ\w*|сред[аеуы]|окружени\w*|режим\w*|рол[ьи])\b"
+)
+_TITLE_NUMBER = re.compile(r"^\d+(?:\.\d+)*\.?\s+")
+_ENVIRONMENT_SCOPE = {
+    "тестовая среда": "test",
+    "тестовое окружение": "test",
+    "тестовый контур": "test",
+    "промышленная среда": "production",
+    "промышленное окружение": "production",
+    "промышленный контур": "production",
+    "продуктивная среда": "production",
+    "продуктивное окружение": "production",
+    "рабочая среда": "production",
+    "боевой контур": "production",
+}
+
+
+def fragment_title_scopes(fragments):
+    """Scope hints from separate visible paragraphs, before checkable()."""
+    result = {}
+    current = None
+    current_document = None
+    for fragment in fragments:
+        document = fragment.get("document")
+        if document != current_document:
+            current = None
+            current_document = document
+        raw = " ".join(fragment["text"].split())
+        value = raw.casefold()
+        title = _TITLE_NUMBER.sub("", value.removesuffix(":")).strip()
+        if title in _ENVIRONMENT_SCOPE:
+            current = ("environment", _ENVIRONMENT_SCOPE[title])
+        elif 4 <= len(value) <= 105 and (value.endswith(":") or raw.isupper()):
+            if _TITLE_SCOPE.search(title) and not re.search(r"\bдолж\w*|\bнеобходимо\b", title):
+                current = ("hint", title)
+            elif value.endswith(":") and not checkable(fragment):
+                current = None
+        result[fragment["id"]] = current
+    return result
+
+
 class Engine:
     def __init__(self, models, threads=4, *, model_reader=None):
         self.dir = Path(models)
@@ -277,6 +345,7 @@ class Engine:
                                "question": QUESTION.get(rule.code, "").format(q=q) or None})
         # 2) дубли и 3) противоречия — по близости эмбеддингов, только среди пунктов-требований
         n_active = len(active)
+        scopes = fragment_title_scopes(active)
         active = [f for f in active if checkable(f)]
         if len(active) > 1 and ("duplicate" not in disabled or "contradiction" not in disabled):
             step("duplicate", 0.2)
@@ -309,18 +378,30 @@ class Engine:
             step("questions", 0.97)
             for n, (a, b, s) in enumerate(pairs):
                 fa, fb = active[a], active[b]
-                if (
-                    s >= DUP_YELLOW and "duplicate" not in disabled
-                    and not distinct_exchange_scopes(fa["text"], fb["text"])
-                ):
+                duplicate = (s >= DUP_YELLOW and "duplicate" not in disabled
+                             and not distinct_exchange_scopes(fa["text"], fb["text"]))
+                contradiction = (nli_p is not None and n < len(nli_p)
+                                 and nli_p[n] >= NLI_YELLOW and not siblings(fa, fb)
+                                 and "exception" not in (fa.get("status"), fb.get("status")))
+                opposed = (duplicate or contradiction) and opposed_obligations(fa["text"], fb["text"])
+                left_scope, right_scope = scopes[fa["id"]], scopes[fb["id"]]
+                different_scope = left_scope != right_scope
+                disjoint_environments = (different_scope and left_scope is not None
+                                         and right_scope is not None
+                                         and left_scope[0] == right_scope[0] == "environment")
+                scope_veto = opposed and disjoint_environments
+                priority = (opposed and duplicate and contradiction and nli_p[n] >= NLI_RED
+                            and not different_scope)
+                if scope_veto:
+                    duplicate = contradiction = False
+                if duplicate and not priority:
                     issues.append({"id": self._id("duplicate", fa["id"], fb["id"]), "type": "duplicate",
                                    "severity": "info", "confidence": round(s, 3), "light": "red" if s >= DUP_RED else "yellow",
                                    "fragment_id": fb["id"], "span": {"start": 0, "end": len(fb["text"]), "quote": fb["text"]},
                                    "related": {"fragment_id": fa["id"], "quote": fa["text"], "status": fa.get("status", "active")},
                                    "explanation": "Почти то же самое уже сказано в другом месте.", "rule": None,
                                    "suggestion": None, "question": "Оставить одно из двух требований или они о разном?"})
-                elif (nli_p is not None and n < len(nli_p) and nli_p[n] >= NLI_YELLOW and not siblings(fa, fb)
-                      and "exception" not in (fa.get("status"), fb.get("status"))):
+                elif contradiction:
                     p = float(nli_p[n])
                     issues.append({"id": self._id("contradiction", fa["id"], fb["id"]), "type": "contradiction",
                                    "severity": "critical", "confidence": round(p, 3), "light": "red" if p >= NLI_RED else "yellow",
